@@ -1,0 +1,4 @@
+Source URL: https://api.linear.app/graphql
+What it is: A Linear commentCreate mutation response recorded from live workspace.
+Retrieved: 2026-10-21
+SHA-256: 7ef65f7e3d92aaebd982096652f6fbaf3aa5a4f17229a783a1cbee718a4b529e
