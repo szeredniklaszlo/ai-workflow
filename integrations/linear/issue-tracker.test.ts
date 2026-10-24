@@ -51,11 +51,11 @@ describe("LinearAdapter", () => {
       const adapter = new LinearAdapter({
         apiToken: "test",
         projectKey: "CUK",
-        orgUrlKey: "cukorborsok",
+        orgUrlKey: "test-workspace",
         fetch: vi.fn(),
       });
       expect(adapter.ticketUrl("CUK-16")).toBe(
-        "https://linear.app/cukorborsok/issue/CUK-16",
+        "https://linear.app/test-workspace/issue/CUK-16",
       );
     });
   });
@@ -165,7 +165,7 @@ describe("LinearAdapter", () => {
       expect(ticket.id).toBe("5f32fe30-b85e-4a3a-ab68-04c3c743f0c8");
       expect(ticket.identifier).toBe("CUK-16");
       expect(ticket.projectKey).toBe("CUK");
-      expect(ticket.title).toBe("Teszt Issue");
+      expect(ticket.title).toBe("Test Issue");
       expect(ticket.trackerStatus).toBe("Backlog");
       expect(ticket.trackerStatusId).toBe("7e83acb5-d9bf-405f-a524-ab7ae4883908");
       expect(ticket.commentsComplete).toBe(true);
@@ -420,7 +420,7 @@ describe("LinearAdapter", () => {
       const url = await adapter.postComment("CUK-16", "test body");
 
       expect(url).toBe(
-        "https://linear.app/cukorborsok/issue/CUK-16/teszt-issue#comment-82c69b4a",
+        "https://linear.app/test-workspace/issue/CUK-16/test-issue#comment-82c69b4a",
       );
     });
 
@@ -469,13 +469,8 @@ describe("LinearAdapter", () => {
         if (query.includes("TeamLabels")) {
           return {
             data: {
-              teams: {
-                nodes: [
-                  {
-                    id: "team-cuk",
-                    labels: { nodes: [{ id: "l-bug", name: "Bug" }] },
-                  },
-                ],
+              issueLabels: {
+                nodes: [{ id: "l-bug", name: "Bug" }],
               },
             },
           };
@@ -511,7 +506,7 @@ describe("LinearAdapter", () => {
 
       expect(res.identifier).toBe("CUK-17");
       expect(res.url).toBe(
-        "https://linear.app/cukorborsok/issue/CUK-17/api-altal-letrehozott-teszt-ticket",
+        "https://linear.app/test-workspace/issue/CUK-17/api-created-test-ticket",
       );
       expect(createdLabels).toEqual(["New-Auto-Label"]);
       expect(createdIssueInput).toEqual({
@@ -520,6 +515,29 @@ describe("LinearAdapter", () => {
         description: "Ticket details",
         labelIds: ["l-bug", "l-New-Auto-Label"],
       });
+    });
+
+    it("throws IssueTrackerInputRejectedError when issueLabelCreate returns no ID", async () => {
+      const fetch = mockFetch((query) => {
+        if (query.includes("TeamId")) {
+          return { data: { teams: { nodes: [{ id: "team-cuk", key: "CUK" }] } } };
+        }
+        if (query.includes("TeamLabels")) {
+          return { data: { issueLabels: { nodes: [] } } };
+        }
+        if (query.includes("CreateLabel")) {
+          return { data: { issueLabelCreate: { success: false, issueLabel: null } } };
+        }
+        throw new Error(`unexpected query: ${query}`);
+      });
+
+      const adapter = new LinearAdapter({ apiToken: "test", projectKey: "CUK", fetch });
+      await expect(
+        adapter.createTicket({
+          summary: "Ticket with missing label creation",
+          labels: ["FailedLabel"],
+        }),
+      ).rejects.toThrow(IssueTrackerInputRejectedError);
     });
 
     it("resolves workspace-level labels from issueLabels and does not re-create them", async () => {
@@ -537,7 +555,6 @@ describe("LinearAdapter", () => {
                   { id: "l-ws-bug", name: "Bug" },
                 ],
               },
-              teams: { nodes: [] },
             },
           };
         }
@@ -695,13 +712,8 @@ describe("LinearAdapter", () => {
         if (query.includes("TeamLabels")) {
           return {
             data: {
-              teams: {
-                nodes: [
-                  {
-                    id: "team-cuk",
-                    labels: { nodes: [{ id: "l-add", name: "AddMe" }] },
-                  },
-                ],
+              issueLabels: {
+                nodes: [{ id: "l-add", name: "AddMe" }],
               },
             },
           };
@@ -749,6 +761,19 @@ describe("LinearAdapter", () => {
         errors: [{ message: "Rate limit exceeded", extensions: { code: "RATELIMITED" } }],
       }));
       const adapter = new LinearAdapter({ apiToken: "bad", projectKey: "CUK", fetch });
+      await expect(adapter.listStatuses()).rejects.toMatchObject({ status: 429 });
+    });
+
+    it("classifies HTTP 400 with RATELIMITED as status 429", async () => {
+      const fetch = mockFetch(() =>
+        new Response(
+          JSON.stringify({
+            errors: [{ message: "Rate limit exceeded", extensions: { code: "RATELIMITED" } }],
+          }),
+          { status: 400, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+      const adapter = new LinearAdapter({ apiToken: "test", projectKey: "CUK", fetch });
       await expect(adapter.listStatuses()).rejects.toMatchObject({ status: 429 });
     });
 

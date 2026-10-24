@@ -27,6 +27,9 @@ const MAX_COMMENT_PAGES = 20;
 const ACCEPTANCE_LABEL =
   /acceptance criteria[*_]*:?[*_]*|^[ \t>#*_-]*(?:acceptance|ac)[*_]*(?:[ \t]*:[*_]*|[ \t]*$)/im;
 
+/**
+ * Extracts acceptance criteria section from ticket description.
+ */
 export function extractAcceptanceCriteria(description: string): string {
   const text = typeof description === "string" ? description : "";
   const label = ACCEPTANCE_LABEL.exec(text);
@@ -37,12 +40,18 @@ export function extractAcceptanceCriteria(description: string): string {
   return match?.[1]?.trim() ?? "";
 }
 
+/**
+ * Collapses whitespace and truncates text to max length with ellipsis.
+ */
 export function truncateExcerpt(text: string, max = 500): string {
   const collapsed = text.replace(/\s+/gu, " ").trim();
   if (collapsed.length <= max) return collapsed;
   return `${collapsed.slice(0, max - 3).trimEnd()}...`;
 }
 
+/**
+ * Returns the oldest ISO timestamp among a list of ticket comments.
+ */
 function oldestCreatedAt(comments: readonly TicketComment[]): string | undefined {
   if (comments.length === 0) return undefined;
   let oldest = comments[0];
@@ -57,6 +66,9 @@ function oldestCreatedAt(comments: readonly TicketComment[]): string | undefined
   return oldest.createdAt;
 }
 
+/**
+ * Returns the oldest ISO timestamp among comment GraphQL nodes.
+ */
 function oldestNodeCreatedAt(nodes: ReadonlyArray<{ createdAt?: string }>): string | undefined {
   if (nodes.length === 0) return undefined;
   let oldestTime = NaN;
@@ -72,6 +84,9 @@ function oldestNodeCreatedAt(nodes: ReadonlyArray<{ createdAt?: string }>): stri
   return oldestStr;
 }
 
+/**
+ * Implements IssueTrackerAdapter for Linear using its GraphQL API.
+ */
 export class LinearAdapter implements IssueTrackerAdapter {
   private readonly apiToken: string;
   public readonly projectKey: string;
@@ -80,6 +95,9 @@ export class LinearAdapter implements IssueTrackerAdapter {
   private teamId: string | null;
   private selfAccountIdPromise: Promise<string> | null = null;
 
+  /**
+   * Initializes a new Linear adapter with the given credentials and HTTP client.
+   */
   constructor(config: LinearConfig) {
     this.apiToken = config.apiToken.trim();
     this.projectKey = config.projectKey.trim();
@@ -88,6 +106,9 @@ export class LinearAdapter implements IssueTrackerAdapter {
     this.teamId = config.teamId ?? null;
   }
 
+  /**
+   * Executes a GraphQL query or mutation against Linear's endpoint with error classification.
+   */
   private async graphql<T = any>(
     query: string,
     variables?: Record<string, unknown>,
@@ -108,23 +129,21 @@ export class LinearAdapter implements IssueTrackerAdapter {
     }
 
     const res = await this.fetch(LINEAR_GRAPHQL_ENDPOINT, fetchInit as RequestInit);
-    if (!res.ok) {
-      if (res.status === 404) {
-        throw new IssueTrackerNotFoundError("Linear resource", "graphql");
-      }
-      if (res.status === 400 && options?.readsFieldErrors) {
-        throw new IssueTrackerInputRejectedError("Linear refused the request.", { issueTypeRejected: false });
-      }
-      throw Object.assign(new Error(`Linear API error: ${res.status} ${res.statusText}`), { status: res.status });
+    if (res.status === 404) {
+      throw new IssueTrackerNotFoundError("Linear resource", "graphql");
     }
 
-    const body = (await res.json()) as { data?: T; errors?: Array<{ message?: string; extensions?: { code?: string } }> };
+    const body = (await res.json().catch(() => null)) as {
+      data?: T;
+      errors?: Array<{ message?: string; extensions?: { code?: string; type?: string } }>;
+    } | null;
+
     if (Array.isArray(body?.errors) && body.errors.length > 0) {
       const err = body.errors[0];
       const message = String(err?.message ?? "Linear GraphQL error");
-      const code = String(err?.extensions?.code ?? "");
+      const code = String(err?.extensions?.code ?? err?.extensions?.type ?? "");
 
-      if (code === "AUTHENTICATION_ERROR" || /authentication|not authenticated|invalid token/i.test(message)) {
+      if (code === "AUTHENTICATION_ERROR" || code === "UNAUTHENTICATED" || /authentication|not authenticated|invalid token/i.test(message)) {
         throw Object.assign(new Error(message), { status: 401 });
       }
       if (code === "FORBIDDEN" || /forbidden|unauthorized/i.test(message)) {
@@ -142,12 +161,26 @@ export class LinearAdapter implements IssueTrackerAdapter {
       ) {
         throw new IssueTrackerInputRejectedError(message, { issueTypeRejected: false });
       }
-      throw Object.assign(new Error(message), { status: 500 });
+      throw Object.assign(new Error(message), { status: res.ok ? 500 : res.status });
+    }
+
+    if (!res.ok) {
+      if (res.status === 400 && options?.readsFieldErrors) {
+        throw new IssueTrackerInputRejectedError("Linear refused the request.", { issueTypeRejected: false });
+      }
+      throw Object.assign(new Error(`Linear API error: ${res.status} ${res.statusText}`), { status: res.status });
+    }
+
+    if (body === null) {
+      throw Object.assign(new Error("Linear returned an unreadable response."), { status: 502 });
     }
 
     return body.data as T;
   }
 
+  /**
+   * Generates the web URL for an issue key.
+   */
   ticketUrl(key: string): string | null {
     if (!ISSUE_KEY.test(key)) return null;
     if (this.orgUrlKey) {
@@ -156,12 +189,15 @@ export class LinearAdapter implements IssueTrackerAdapter {
     return `https://linear.app/issue/${encodeURIComponent(key)}`;
   }
 
+  /**
+   * Returns the viewer account ID, caching the promise.
+   */
   async getCurrentUserAccountId(signal?: AbortSignal): Promise<string> {
     if (this.selfAccountIdPromise) return this.selfAccountIdPromise;
 
     const promise = (async () => {
       const data = await this.graphql<{ viewer?: { id: string } }>(
-        `query Viewer { viewer { id name email } }`,
+        `query Viewer { viewer { id name } }`,
         undefined,
         { signal },
       );
@@ -180,6 +216,9 @@ export class LinearAdapter implements IssueTrackerAdapter {
     }
   }
 
+  /**
+   * Resolves and caches the Linear team ID for the configured team key.
+   */
   private async ensureTeamId(signal?: AbortSignal): Promise<string> {
     if (this.teamId) return this.teamId;
     const query = `
@@ -207,6 +246,9 @@ export class LinearAdapter implements IssueTrackerAdapter {
     return node.id;
   }
 
+  /**
+   * Lists workflow states for the team, ordered by position.
+   */
   async listStatuses(signal?: AbortSignal): Promise<Array<{ id: string; name: string }>> {
     const query = `
       query TeamStates($teamKey: String!) {
@@ -259,6 +301,9 @@ export class LinearAdapter implements IssueTrackerAdapter {
     return result;
   }
 
+  /**
+   * Matches a transition target to an existing workflow state.
+   */
   async resolveMoveTargetStatus(
     _id: string,
     target: IssueTrackerMoveTarget,
@@ -283,6 +328,9 @@ export class LinearAdapter implements IssueTrackerAdapter {
     return null;
   }
 
+  /**
+   * Moves an issue to a target workflow state.
+   */
   async moveTicket(id: string, target: IssueTrackerMoveTarget): Promise<void> {
     const matched = await this.resolveMoveTargetStatus(id, target);
     if (!matched) {
@@ -312,6 +360,9 @@ export class LinearAdapter implements IssueTrackerAdapter {
     await this.graphql(mutation, { id, stateId: matched.id }, { isMutation: true });
   }
 
+  /**
+   * Fetches full ticket details including comments and relations.
+   */
   async fetchTicket(id: string, options?: { commentsSince?: string }): Promise<TicketContent> {
     const query = `
       query IssueByIdentifier($id: String!) {
@@ -521,6 +572,9 @@ export class LinearAdapter implements IssueTrackerAdapter {
     };
   }
 
+  /**
+   * Posts a new comment to an issue.
+   */
   async postComment(id: string, comment: string, options?: { signal?: AbortSignal }): Promise<string | null> {
     const mutation = `
       mutation CreateComment($issueId: String!, $body: String!) {
@@ -541,6 +595,9 @@ export class LinearAdapter implements IssueTrackerAdapter {
     return data?.commentCreate?.comment?.url ?? null;
   }
 
+  /**
+   * Finds a comment containing a marker string.
+   */
   async findCommentByMarker(id: string, marker: string): Promise<string | null> {
     let hasNextPage = true;
     let endCursor: string | null = null;
@@ -590,13 +647,18 @@ export class LinearAdapter implements IssueTrackerAdapter {
     return null;
   }
 
+  /**
+   * Resolves existing label IDs or creates missing ones for the team.
+   */
   private async resolveLabelIds(teamId: string, labelNames: readonly string[]): Promise<string[]> {
-    if (labelNames.length === 0) return [];
+    const names = Array.from(new Set(labelNames.map((n) => n.trim()).filter(Boolean)));
+    if (names.length === 0) return [];
 
     const query = `
-      query TeamLabels($teamKey: String!) {
+      query TeamLabels($teamKey: String!, $names: [String!]!) {
         issueLabels(
           filter: {
+            name: { in: $names }
             or: [
               { team: { key: { eq: $teamKey } } }
               { team: { null: true } }
@@ -613,23 +675,19 @@ export class LinearAdapter implements IssueTrackerAdapter {
     `;
     const data = await this.graphql<{
       issueLabels?: { nodes?: Array<{ id: string; name: string }> };
-      teams?: { nodes?: Array<{ id: string; labels?: { nodes?: Array<{ id: string; name: string }> } }> };
-    }>(query, { teamKey: this.projectKey });
+    }>(query, { teamKey: this.projectKey, names });
 
-    const issueLabelNodes = data?.issueLabels?.nodes ?? [];
-    const team = data?.teams?.nodes?.find((t) => t.id === teamId) ?? data?.teams?.nodes?.[0];
-    const teamLabelNodes = team?.labels?.nodes ?? [];
-    const existingLabels = [...issueLabelNodes, ...teamLabelNodes];
+    const existingLabels = data?.issueLabels?.nodes ?? [];
     const labelMap = new Map<string, string>();
     for (const label of existingLabels) {
-      labelMap.set(label.name.toLowerCase(), label.id);
+      if (label?.id && label?.name) {
+        labelMap.set(label.name.toLowerCase(), label.id);
+      }
     }
 
     const resolvedIds: string[] = [];
-    for (const name of labelNames) {
-      const trimmed = name.trim();
-      if (!trimmed) continue;
-      const lower = trimmed.toLowerCase();
+    for (const name of names) {
+      const lower = name.toLowerCase();
       const existingId = labelMap.get(lower);
       if (existingId) {
         resolvedIds.push(existingId);
@@ -647,20 +705,26 @@ export class LinearAdapter implements IssueTrackerAdapter {
         `;
         const res = await this.graphql<{ issueLabelCreate?: { issueLabel?: { id: string; name: string } } }>(
           createMutation,
-          { input: { teamId, name: trimmed } },
+          { input: { teamId, name } },
           { isMutation: true, readsFieldErrors: true },
         );
         const createdId = res?.issueLabelCreate?.issueLabel?.id;
-        if (createdId) {
-          labelMap.set(lower, createdId);
-          resolvedIds.push(createdId);
+        if (!createdId) {
+          throw new IssueTrackerInputRejectedError(`Linear did not create the label "${name}".`, {
+            issueTypeRejected: false,
+          });
         }
+        labelMap.set(lower, createdId);
+        resolvedIds.push(createdId);
       }
     }
 
     return resolvedIds;
   }
 
+  /**
+   * Creates a new issue in Linear with title, description, and labels.
+   */
   async createTicket(input: {
     summary: string;
     description?: string;
@@ -706,10 +770,16 @@ export class LinearAdapter implements IssueTrackerAdapter {
     };
   }
 
+  /**
+   * Lists issue types (Linear does not use issue types, returns empty array).
+   */
   async listIssueTypes(): Promise<Array<{ id: string; name: string }>> {
     return [];
   }
 
+  /**
+   * Finds issue keys in a specific workflow status.
+   */
   async ticketsInStatus(status: string, options?: { limit?: number }): Promise<string[]> {
     const limit = Math.min(Math.max(options?.limit ?? 50, 1), 100);
     const query = `
@@ -745,6 +815,9 @@ export class LinearAdapter implements IssueTrackerAdapter {
     return sorted.map((n) => n.identifier);
   }
 
+  /**
+   * Finds issue keys carrying a specific label.
+   */
   async ticketsWithLabel(label: string): Promise<string[]> {
     const query = `
       query IssuesWithLabel($teamKey: String!, $labelName: String!, $first: Int!) {
@@ -768,6 +841,9 @@ export class LinearAdapter implements IssueTrackerAdapter {
     return (data?.issues?.nodes ?? []).map((n) => n.identifier);
   }
 
+  /**
+   * Searches for issues using keywords.
+   */
   async findTickets(input: {
     keywords: readonly string[];
     limit: number;
@@ -827,6 +903,9 @@ export class LinearAdapter implements IssueTrackerAdapter {
     }));
   }
 
+  /**
+   * Adds and removes labels on an issue.
+   */
   async updateLabels(id: string, changes: { add?: string[]; remove?: string[] }): Promise<void> {
     const toAdd = changes.add?.filter(Boolean) ?? [];
     const toRemove = changes.remove?.filter(Boolean) ?? [];
@@ -871,6 +950,9 @@ export class LinearAdapter implements IssueTrackerAdapter {
     await this.graphql(mutation, { id, labelIds: mergedIds }, { isMutation: true });
   }
 
+  /**
+   * Lists registered webhooks in the workspace.
+   */
   async listWebhookRegistrations(
     signal?: AbortSignal | null,
   ): Promise<Array<{ url: string; enabled: boolean; events: string[] }> | null> {

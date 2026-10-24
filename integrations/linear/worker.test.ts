@@ -167,7 +167,7 @@ describe("the Linear integration's health checks", () => {
     const result = await probe("webhook-registration")(
       context((body) => {
         if (body.includes("Webhooks")) {
-          return webhooksResponse([{ url: WEBHOOK_URL, enabled: true, resourceTypes: ["Issue"] }]);
+          return webhooksResponse([{ url: WEBHOOK_URL, enabled: true, resourceTypes: ["Issue", "Comment"] }]);
         }
         return undefined;
       }),
@@ -175,7 +175,7 @@ describe("the Linear integration's health checks", () => {
 
     expect(result).toMatchObject({
       status: "live",
-      message: `Linear calls ${WEBHOOK_URL} on every issue update.`,
+      message: `Linear calls ${WEBHOOK_URL} on issue and comment updates.`,
     });
   });
 
@@ -183,7 +183,7 @@ describe("the Linear integration's health checks", () => {
     const result = await probe("webhook-registration")(
       context((body) => {
         if (body.includes("Webhooks")) {
-          return webhooksResponse([{ url: "https://other.url", enabled: true, resourceTypes: ["Issue"] }]);
+          return webhooksResponse([{ url: "https://other.url", enabled: true, resourceTypes: ["Issue", "Comment"] }]);
         }
         return undefined;
       }),
@@ -197,7 +197,7 @@ describe("the Linear integration's health checks", () => {
     const result = await probe("webhook-registration")(
       context((body) => {
         if (body.includes("Webhooks")) {
-          return webhooksResponse([{ url: WEBHOOK_URL, enabled: false, resourceTypes: ["Issue"] }]);
+          return webhooksResponse([{ url: WEBHOOK_URL, enabled: false, resourceTypes: ["Issue", "Comment"] }]);
         }
         return undefined;
       }),
@@ -218,7 +218,35 @@ describe("the Linear integration's health checks", () => {
     );
 
     expect(result).toMatchObject({ status: "down" });
-    expect((result as { message: string }).message).toContain("does not send issue updates");
+    expect((result as { message: string }).message).toContain("does not send Issue events");
+  });
+
+  it("reports webhook down when missing Comment event", async () => {
+    const result = await probe("webhook-registration")(
+      context((body) => {
+        if (body.includes("Webhooks")) {
+          return webhooksResponse([{ url: WEBHOOK_URL, enabled: true, resourceTypes: ["Issue"] }]);
+        }
+        return undefined;
+      }),
+    );
+
+    expect(result).toMatchObject({ status: "down" });
+    expect((result as { message: string }).message).toContain("does not send Comment events");
+  });
+
+  it("reports webhook down when missing both Issue and Comment events", async () => {
+    const result = await probe("webhook-registration")(
+      context((body) => {
+        if (body.includes("Webhooks")) {
+          return webhooksResponse([{ url: WEBHOOK_URL, enabled: true, resourceTypes: [] }]);
+        }
+        return undefined;
+      }),
+    );
+
+    expect(result).toMatchObject({ status: "down" });
+    expect((result as { message: string }).message).toContain("does not send Issue and Comment events");
   });
 
   it("reports webhook degraded when user has no permission to list webhooks", async () => {

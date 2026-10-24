@@ -13,17 +13,26 @@ import { adapterFor, webhook } from "./webhook";
 type LinearManifest = typeof manifest;
 type LinearContext = IntegrationContext<LinearManifest>;
 
-const WEBHOOK_EVENT_THIS_DEPLOYMENT_NEEDS = "Issue";
+const WEBHOOK_EVENTS_THIS_DEPLOYMENT_NEEDS = ["Issue", "Comment"] as const;
 
+/**
+ * Reads the account ID belonging to the authenticated viewer.
+ */
 async function account(ctx: LinearContext): Promise<string> {
   return adapterFor(ctx).getCurrentUserAccountId();
 }
 
+/**
+ * Lists the workflow states available in the configured team.
+ */
 async function statuses(ctx: LinearContext): Promise<Array<{ id: string; name: string }>> {
   const list = await adapterFor(ctx).listStatuses();
   return list ?? [];
 }
 
+/**
+ * The runtime definition for the Linear integration.
+ */
 const definition: IntegrationRuntimeDefinition<LinearManifest> = {
   webhook,
   testConnection: async (ctx) => {
@@ -161,24 +170,35 @@ const definition: IntegrationRuntimeDefinition<LinearManifest> = {
       if (!hook.enabled) {
         return { status: "down", message: `The Linear webhook for ${expected} is switched off.` };
       }
-      if (!hook.events.includes(WEBHOOK_EVENT_THIS_DEPLOYMENT_NEEDS)) {
+      const missing = WEBHOOK_EVENTS_THIS_DEPLOYMENT_NEEDS.filter(
+        (event) => !hook.events.includes(event),
+      );
+      if (missing.length > 0) {
         return {
           status: "down",
-          message:
-            "The Linear webhook for this deployment does not send issue updates, so an issue entering the AI column will only be noticed by the slower poll.",
+          message: `The Linear webhook for this deployment does not send ${missing.join(" and ")} events, so an issue entering the AI column or a comment answer will only be noticed by the slower poll.`,
         };
       }
-      return { status: "live", message: `Linear calls ${expected} on every issue update.` };
+      return { status: "live", message: `Linear calls ${expected} on issue and comment updates.` };
     },
   },
 };
 
+/**
+ * Extracts a human readable error message from an unknown error value.
+ */
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+/**
+ * Strips the query string and trailing slashes from a URL for loose comparisons.
+ */
 function withoutQuery(url: string): string {
   return (url.split("?")[0] ?? "").replace(/\/+$/u, "").toLowerCase();
 }
 
+/**
+ * The exported runtime implementation for the Linear integration.
+ */
 export const runtime = defineIntegrationRuntime(manifest, definition);

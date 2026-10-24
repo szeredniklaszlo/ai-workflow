@@ -3,7 +3,7 @@
  */
 import { createHmac } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { webhook } from "./webhook";
 
 const SECRET = "a-shared-linear-secret";
@@ -37,6 +37,7 @@ function context(overrides: { projectKey?: string; webhookSecret?: string | unde
 
 function request(nameOrBody: string, options: { signature?: string | null; isRaw?: boolean } = {}) {
   const rawBody = options.isRaw ? nameOrBody : recorded(nameOrBody);
+  const hasSignatureHeader = options.signature !== null;
   const signature =
     options.signature === null
       ? undefined
@@ -47,7 +48,7 @@ function request(nameOrBody: string, options: { signature?: string | null; isRaw
     rawBody,
     headers: {
       "content-type": "application/json",
-      ...(signature ? { "linear-signature": signature } : {}),
+      ...(hasSignatureHeader && signature !== undefined ? { "linear-signature": signature } : {}),
     },
     query: {},
   } as never;
@@ -55,8 +56,14 @@ function request(nameOrBody: string, options: { signature?: string | null; isRaw
 
 describe("the Linear integration's webhook", () => {
   beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1792618983427);
     vi.clearAllMocks();
     accountId.mockResolvedValue("viewer-account-id");
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   describe("verifying who sent it", () => {
@@ -100,6 +107,27 @@ describe("the Linear integration's webhook", () => {
       );
 
       expect(reception).toMatchObject({ kind: "refused", status: 401 });
+      expect(reception.kind === "refused" && reception.reason).toContain("no signature");
+    });
+
+    it("refuses a delivery whose timestamp is outside the 60-second window", async () => {
+      const stalePayload = JSON.stringify({
+        action: "update",
+        type: "Issue",
+        webhookTimestamp: 1792618983427 - 120_000,
+        data: { identifier: "CUK-16", team: { key: "CUK" } },
+      });
+
+      const reception = await webhook.receive(
+        request(stalePayload, { isRaw: true }),
+        context(),
+      );
+
+      expect(reception).toEqual({
+        kind: "refused",
+        status: 401,
+        reason: "The delivery timestamp is outside the accepted window.",
+      });
     });
 
     it("never asks the provider anything about a delivery it refused", async () => {
@@ -166,6 +194,7 @@ describe("the Linear integration's webhook", () => {
       const emptyIssuePayload = JSON.stringify({
         action: "update",
         type: "Issue",
+        webhookTimestamp: 1792618983427,
         data: { id: "123", team: { key: "CUK" } },
       });
 

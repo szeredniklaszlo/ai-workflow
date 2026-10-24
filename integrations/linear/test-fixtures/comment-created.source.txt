@@ -1,4 +1,4 @@
 Source URL: https://api.linear.app/graphql
 What it is: A Linear webhook delivery for a Comment creation, recorded from live workspace.
 Retrieved: 2026-10-21
-SHA-256: e8155df85232aadbe901d0f2dce8071135a70357630143faf8ab349a5ba87ad3
+SHA-256: 72db560a6f0c92cd103b4198fc1f1569016a92f3d8f8be86fb974013525c9084

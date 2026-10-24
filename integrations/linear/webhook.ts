@@ -11,6 +11,12 @@ import type { manifest } from "./manifest";
 
 type LinearContext = IntegrationContext<typeof manifest>;
 
+const WEBHOOK_REPLAY_WINDOW_MS = 60_000;
+
+/**
+ * Handles incoming Linear webhooks, verifying HMAC signatures and replay timestamps,
+ * filtering watched projects, and extracting tracker ticket events.
+ */
 export const webhook: IntegrationWebhook<typeof manifest> = {
   receive: async (request, ctx) => {
     const refusal = verifySignature(request.rawBody, request.headers, ctx);
@@ -19,6 +25,19 @@ export const webhook: IntegrationWebhook<typeof manifest> = {
     const body = parseBody(request.rawBody);
     if (body === null) {
       return ignored("unparseable_body");
+    }
+
+    const sentAt = body?.webhookTimestamp;
+    if (
+      typeof sentAt !== "number" ||
+      !Number.isFinite(sentAt) ||
+      Math.abs(Date.now() - sentAt) > WEBHOOK_REPLAY_WINDOW_MS
+    ) {
+      return {
+        kind: "refused",
+        status: 401,
+        reason: "The delivery timestamp is outside the accepted window.",
+      };
     }
 
     const ticketKey = readString(body?.data?.identifier) ?? readString(body?.data?.issue?.identifier);
@@ -65,6 +84,9 @@ export const webhook: IntegrationWebhook<typeof manifest> = {
   },
 };
 
+/**
+ * Determines whether the event was triggered by the bot itself or an external user.
+ */
 async function whoActed(
   body: any,
   statusChanged: boolean,
@@ -85,6 +107,9 @@ async function whoActed(
   }
 }
 
+/**
+ * Creates an issue tracker adapter instance for the given context.
+ */
 export function adapterFor(ctx: LinearContext): LinearAdapter {
   return new LinearAdapter({
     apiToken: ctx.connection.apiToken,
@@ -93,6 +118,9 @@ export function adapterFor(ctx: LinearContext): LinearAdapter {
   });
 }
 
+/**
+ * Builds an ignored webhook reception result with an optional ticket key.
+ */
 function ignored(reason: string, ticketKey?: string): IntegrationWebhookReception {
   return {
     kind: "ticket_events",
@@ -102,6 +130,9 @@ function ignored(reason: string, ticketKey?: string): IntegrationWebhookReceptio
   };
 }
 
+/**
+ * Verifies the Linear webhook delivery signature using HMAC-SHA256.
+ */
 function verifySignature(
   rawBody: string,
   headers: Readonly<Record<string, string>>,
@@ -144,6 +175,9 @@ function verifySignature(
   return null;
 }
 
+/**
+ * Safely parses the webhook body JSON payload.
+ */
 function parseBody(rawBody: string): any {
   if (!rawBody) return {};
   try {
@@ -153,6 +187,9 @@ function parseBody(rawBody: string): any {
   }
 }
 
+/**
+ * Extracts status transition data from an issue update payload.
+ */
 function readStatusChange(body: any): TrackerTicketEvent["statusChange"] {
   if (body?.type !== "Issue" || body?.action !== "update") return null;
 
@@ -172,6 +209,9 @@ function readStatusChange(body: any): TrackerTicketEvent["statusChange"] {
   };
 }
 
+/**
+ * Trims and returns a string if non-empty, otherwise returns null.
+ */
 function readString(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
