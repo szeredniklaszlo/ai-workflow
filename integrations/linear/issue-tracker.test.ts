@@ -577,6 +577,58 @@ describe("LinearAdapter", () => {
       expect(res.identifier).toBe("CUK-17");
       expect(createLabelCalled).toBe(false);
     });
+
+    it("matches existing labels case-insensitively with eqIgnoreCase filter without creating new labels", async () => {
+      let passedFilter: any = null;
+      let createLabelCalled = false;
+      let createdIssueInput: any = null;
+
+      const fetch = mockFetch((query, variables) => {
+        if (query.includes("TeamId")) {
+          return { data: { teams: { nodes: [{ id: "team-cuk", key: "CUK" }] } } };
+        }
+        if (query.includes("TeamLabels")) {
+          passedFilter = variables.filter;
+          return {
+            data: {
+              issueLabels: {
+                nodes: [{ id: "l-bug", name: "Bug" }],
+              },
+            },
+          };
+        }
+        if (query.includes("CreateLabel")) {
+          createLabelCalled = true;
+          return { data: { issueLabelCreate: { success: true } } };
+        }
+        if (query.includes("CreateIssue")) {
+          createdIssueInput = variables.input;
+          return recorded("issue-create");
+        }
+        throw new Error(`unexpected query: ${query}`);
+      });
+
+      const adapter = new LinearAdapter({ apiToken: "test", projectKey: "CUK", fetch });
+      const res = await adapter.createTicket({
+        summary: "Ticket with lowercase bug label",
+        labels: ["bug"],
+      });
+
+      expect(res.identifier).toBe("CUK-17");
+      expect(passedFilter).toEqual({
+        and: [
+          { or: [{ name: { eqIgnoreCase: "bug" } }] },
+          {
+            or: [
+              { team: { key: { eq: "CUK" } } },
+              { team: { null: true } },
+            ],
+          },
+        ],
+      });
+      expect(createLabelCalled).toBe(false);
+      expect(createdIssueInput.labelIds).toEqual(["l-bug"]);
+    });
   });
 
   describe("ticketsInStatus", () => {
@@ -613,6 +665,7 @@ describe("LinearAdapter", () => {
     it("finds tickets with label", async () => {
       const fetch = mockFetch((query) => {
         if (query.includes("IssuesWithLabel")) {
+          expect(query).toContain("labels: { name: { eqIgnoreCase: $labelName } }");
           return { data: { issues: { nodes: [{ identifier: "CUK-10" }] } } };
         }
         throw new Error("unexpected query");

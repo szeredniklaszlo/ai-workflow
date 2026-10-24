@@ -655,17 +655,8 @@ export class LinearAdapter implements IssueTrackerAdapter {
     if (names.length === 0) return [];
 
     const query = `
-      query TeamLabels($teamKey: String!, $names: [String!]!) {
-        issueLabels(
-          filter: {
-            name: { in: $names }
-            or: [
-              { team: { key: { eq: $teamKey } } }
-              { team: { null: true } }
-            ]
-          }
-          first: 250
-        ) {
+      query TeamLabels($filter: IssueLabelFilter!) {
+        issueLabels(filter: $filter, first: 250) {
           nodes {
             id
             name
@@ -673,9 +664,20 @@ export class LinearAdapter implements IssueTrackerAdapter {
         }
       }
     `;
+    const filter = {
+      and: [
+        { or: names.map((name) => ({ name: { eqIgnoreCase: name } })) },
+        {
+          or: [
+            { team: { key: { eq: this.projectKey } } },
+            { team: { null: true } },
+          ],
+        },
+      ],
+    };
     const data = await this.graphql<{
       issueLabels?: { nodes?: Array<{ id: string; name: string }> };
-    }>(query, { teamKey: this.projectKey, names });
+    }>(query, { filter });
 
     const existingLabels = data?.issueLabels?.nodes ?? [];
     const labelMap = new Map<string, string>();
@@ -824,7 +826,7 @@ export class LinearAdapter implements IssueTrackerAdapter {
         issues(
           filter: {
             team: { key: { eq: $teamKey } }
-            labels: { name: { eq: $labelName } }
+            labels: { name: { eqIgnoreCase: $labelName } }
           }
           first: $first
         ) {
