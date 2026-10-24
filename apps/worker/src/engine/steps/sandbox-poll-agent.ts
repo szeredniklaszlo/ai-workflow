@@ -29,7 +29,8 @@ export async function checkPhaseDone(
   deadlineMs: number = SANDBOX_STEP_DEADLINE_MS,
 ): Promise<boolean | "stopped"> {
   "use step";
-  const { Sandbox } = await import("@vercel/sandbox");
+  const { loadSandboxSdk } = await import("../../sandbox/runtime.js");
+  const { Sandbox } = await loadSandboxSdk();
   try {
     return await withSandboxDeadline(deadlineMs, async (signal) => {
       const sandbox = await Sandbox.get({
@@ -70,7 +71,8 @@ export async function collectPhaseOutput(
 ): Promise<string> {
   "use step";
   return withSandboxDeadline(SANDBOX_STEP_DEADLINE_MS, async (signal) => {
-    const { Sandbox } = await import("@vercel/sandbox");
+    const { loadSandboxSdk } = await import("../../sandbox/runtime.js");
+    const { Sandbox } = await loadSandboxSdk();
     const sandbox = await Sandbox.get({ sandboxId, signal, ...getSandboxCredentials() });
 
     const stdoutResult = await sandbox.runCommand("cat", [outputFile], { signal });
@@ -92,7 +94,8 @@ async function collectPhaseArtifacts(
   paths: Pick<PhaseArtifactPaths, "stdout" | "stderr" | "structuredOutput" | "exitCode">,
   signal: AbortSignal,
 ): Promise<CollectedPhaseArtifacts> {
-  const { Sandbox } = await import("@vercel/sandbox");
+  const { loadSandboxSdk } = await import("../../sandbox/runtime.js");
+  const { Sandbox } = await loadSandboxSdk();
   const sandbox = await Sandbox.get({ sandboxId, signal, ...getSandboxCredentials() });
 
   const stdoutResult = await sandbox.runCommand("cat", [paths.stdout], { signal });
@@ -183,7 +186,8 @@ async function collectBoundedReplayPhaseDiagnostics(
   stderr: BoundedDiagnosticTail;
   exitCode: number | null;
 }> {
-  const { Sandbox } = await import("@vercel/sandbox");
+  const { loadSandboxSdk } = await import("../../sandbox/runtime.js");
+  const { Sandbox } = await loadSandboxSdk();
   const sandbox = await Sandbox.get({
     sandboxId,
     ...getSandboxCredentials(),
@@ -267,7 +271,8 @@ export async function teardownSandbox(
   deadlineMs: number = SANDBOX_STEP_DEADLINE_MS,
 ): Promise<void> {
   "use step";
-  const { Sandbox } = await import("@vercel/sandbox");
+  const { loadSandboxSdk } = await import("../../sandbox/runtime.js");
+  const { Sandbox } = await loadSandboxSdk();
   try {
     await withSandboxDeadline(deadlineMs, async (signal) => {
       const sandbox = await Sandbox.get({

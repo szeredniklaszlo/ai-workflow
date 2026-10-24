@@ -1374,7 +1374,8 @@ export async function captureDefaultBranchFilesStep(
       );
     };
     const acquired = await withinDeadline(async () => {
-      const { Sandbox } = await import("@vercel/sandbox");
+      const { loadSandboxSdk } = await import("../../sandbox/runtime.js");
+      const { Sandbox } = await loadSandboxSdk();
       const { getSandboxCredentials } = await import("../../sandbox/credentials.js");
       return Sandbox.get({ sandboxId: input.sandboxId, ...getSandboxCredentials() });
     });

@@ -263,7 +263,8 @@ export async function snapshotClarificationSandboxStep(
   input: SnapshotClarificationSandboxInput,
 ): Promise<SerializableClarificationSnapshot> {
   "use step";
-  const { Sandbox, Snapshot } = await import("@vercel/sandbox");
+  const { loadSandboxSdk } = await import("../../sandbox/runtime.js");
+  const { Sandbox, Snapshot } = await loadSandboxSdk();
   const { getSandboxCredentials } = await import("../../sandbox/credentials.js");
   const credentials = getSandboxCredentials();
   if (input.timeoutMs <= 0) {
@@ -540,7 +541,8 @@ export async function restoreClarificationSandboxStep(
   input: RestoreClarificationSandboxInput,
 ): Promise<{ sandboxId: string }> {
   "use step";
-  const { Sandbox } = await import("@vercel/sandbox");
+  const { loadSandboxSdk } = await import("../../sandbox/runtime.js");
+  const { Sandbox } = await loadSandboxSdk();
   const { getSandboxCredentials } = await import("../../sandbox/credentials.js");
   const { createAdapters } = await import("../support/adapters.js");
   const { createAgentAdapter } = await import("../../sandbox/agents/index.js");
@@ -599,7 +601,8 @@ restoreClarificationSandboxStep.maxRetries = 0;
 
 export async function deleteClarificationSnapshotStep(snapshotId: string): Promise<void> {
   "use step";
-  const { Snapshot } = await import("@vercel/sandbox");
+  const { loadSandboxSdk } = await import("../../sandbox/runtime.js");
+  const { Snapshot } = await loadSandboxSdk();
   const { getSandboxCredentials } = await import("../../sandbox/credentials.js");
   try {
     const snapshot = await Snapshot.get({ snapshotId, ...getSandboxCredentials() });

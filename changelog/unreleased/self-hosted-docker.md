@@ -1,0 +1,1 @@
+- Add optional self-hosted Docker deployment mode (`SANDBOX_KIND=docker`, `DATABASE_DRIVER=postgres`, `CRON_IN_PROCESS=true`) alongside the default Vercel and Neon runtime.

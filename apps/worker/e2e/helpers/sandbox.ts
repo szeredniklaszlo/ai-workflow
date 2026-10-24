@@ -9,7 +9,8 @@ export async function stopSandboxesForTicket(
 ): Promise<number> {
   const expectedBranch = `ai-workflow/${ticketKey.trim().toLowerCase()}`;
   try {
-    const { Sandbox } = await import("@vercel/sandbox");
+    const { loadSandboxSdk } = await import("../../src/sandbox/runtime.js");
+    const { Sandbox } = await loadSandboxSdk();
     const { getSandboxCredentials } = await import(
       "../../src/sandbox/credentials.js"
     );
@@ -102,7 +103,8 @@ export async function killClaudeForTicket(
   // buildPhaseScript for the exact command line.
   const killPattern = agentKind === "codex" ? "codex exec" : "claude --print";
 
-  const { Sandbox } = await import("@vercel/sandbox");
+  const { loadSandboxSdk } = await import("../../src/sandbox/runtime.js");
+  const { Sandbox } = await loadSandboxSdk();
   const { getSandboxCredentials } = await import(
     "../../src/sandbox/credentials.js"
   );

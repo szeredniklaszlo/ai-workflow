@@ -360,7 +360,8 @@ export async function promoteRepositoryWriteScopeStep(input: {
   integrationPins?: readonly IntegrationConnectionPin[];
 }): Promise<WorkspaceManifestV2> {
   "use step";
-  const { Sandbox } = await import("@vercel/sandbox");
+  const { loadSandboxSdk } = await import("../../sandbox/runtime.js");
+  const { Sandbox } = await loadSandboxSdk();
   const { getSandboxCredentials } = await import("../../sandbox/credentials.js");
   const { assertConnectedActiveRunOwner } = await import(
     "../../db/repositories/active-runs.js"

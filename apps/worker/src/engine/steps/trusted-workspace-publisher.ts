@@ -78,7 +78,8 @@ export async function publishTrustedWorkspaceFromSandbox(input: {
   reviewLedger?: ReviewLedgerGuardSummary;
 }): Promise<TrustedWorkspacePushResult> {
   "use step";
-  const { Sandbox } = await import("@vercel/sandbox");
+  const { loadSandboxSdk } = await import("../../sandbox/runtime.js");
+  const { Sandbox } = await loadSandboxSdk();
   const { createRepositoryVcsRuntime } = await import("../support/vcs-runtime.js");
   const { mayRunTouchRepository, repositoryNotEnabledMessage } = await import(
     "../support/repository-access.js"

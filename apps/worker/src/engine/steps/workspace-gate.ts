@@ -357,7 +357,8 @@ async function inspectWorkspaceForGateStep(
   trustedManifest: WorkspaceManifest,
 ): Promise<InspectedWorkspace> {
   "use step";
-  const { Sandbox } = await import("@vercel/sandbox");
+  const { loadSandboxSdk } = await import("../../sandbox/runtime.js");
+  const { Sandbox } = await loadSandboxSdk();
   const { getSandboxCredentials } = await import("../../sandbox/credentials.js");
   const { fingerprintWorkspaceState } = await import(
     "../helpers/workspace-gate-fingerprint.js"

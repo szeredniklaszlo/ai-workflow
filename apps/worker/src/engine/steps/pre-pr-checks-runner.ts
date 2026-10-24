@@ -827,7 +827,8 @@ export async function startRepoCheckBatchStep(
   ) & ChecksClockStepObservation
 > {
   "use step";
-  const { Sandbox } = await import("@vercel/sandbox");
+  const { loadSandboxSdk } = await import("../../sandbox/runtime.js");
+  const { Sandbox } = await loadSandboxSdk();
   const sandbox = await Sandbox.get({ sandboxId, ...getSandboxCredentials() });
   const manifest = await readWorkspaceManifest(sandbox);
   const repo = manifest.repositories.find((candidate) =>
@@ -1041,7 +1042,8 @@ export async function collectRepoCheckBatchStep(
   options: RepoCheckBatchCollectOptions = {},
 ): Promise<CollectedRepoCheckBatch> {
   "use step";
-  const { Sandbox } = await import("@vercel/sandbox");
+  const { loadSandboxSdk } = await import("../../sandbox/runtime.js");
+  const { Sandbox } = await loadSandboxSdk();
   const sandbox = await Sandbox.get({ sandboxId, ...getSandboxCredentials() });
   const total = setup.length + commands.length;
   const commandAt = (index: number): string =>
@@ -1700,7 +1702,8 @@ export async function listWorkspaceRepositoriesStep(
   sandboxId: string,
 ): Promise<Array<{ provider: WorkspaceRepo["provider"]; repoPath: string }>> {
   "use step";
-  const { Sandbox } = await import("@vercel/sandbox");
+  const { loadSandboxSdk } = await import("../../sandbox/runtime.js");
+  const { Sandbox } = await loadSandboxSdk();
   const sandbox = await Sandbox.get({ sandboxId, ...getSandboxCredentials() });
   const manifest = await readWorkspaceManifest(sandbox);
   return manifest.repositories.map((repo) => ({

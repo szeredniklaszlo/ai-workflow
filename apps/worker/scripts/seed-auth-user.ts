@@ -1,8 +1,9 @@
 /**
  * Build-time admin seeder. Runs after `db:migrate` in `pnpm build`, where
- * Vercel injects the env. Idempotent (see seedAuthUser). Missing required env
- * fails closed outside local development so deployments cannot silently build
- * without a usable dashboard owner.
+ * Vercel injects the env, or at container startup in self-hosted deployments.
+ * Idempotent (see seedAuthUser). Missing required env fails closed outside
+ * local development so deployments cannot silently build without a usable
+ * dashboard owner.
  */
 import { config } from "dotenv";
 import { resolveSeedAuthEnv } from "../src/services/auth/seed-auth-env.js";
@@ -43,59 +44,75 @@ if (ssoKeys.some(Boolean) && !ssoKeys.every(Boolean)) {
   );
 }
 
-const { neon } = await import("@neondatabase/serverless");
-const { drizzle } = await import("drizzle-orm/neon-http");
 const schema = await import("../src/db/schema.js");
 const { bootstrapDashboardAuth, createAuth } = await import("../src/auth.js");
 const { loadSeedAuthOrganizationName } = await import(
   "../src/services/auth/seed-auth-settings.js"
-);
+  );
 
-const db = drizzle({ client: neon(DATABASE_URL!), schema }) as unknown as Parameters<
-  typeof createAuth
->[0];
+const useNodePg = process.env.DATABASE_DRIVER === "postgres";
+let closeDb: (() => Promise<void>) | undefined;
+let db: Parameters<typeof createAuth>[0];
 
-const auth = createAuth(db, {
-  secret: BETTER_AUTH_SECRET!,
-  baseURL: BETTER_AUTH_URL!,
-  trustedOrigins: DASHBOARD_ORIGIN ? [DASHBOARD_ORIGIN] : [],
-});
-const organizationName = await loadSeedAuthOrganizationName(db);
+if (useNodePg) {
+  const pg = await import("pg");
+  const { drizzle } = await import("drizzle-orm/node-postgres");
+  const pool = new pg.default.Pool({ connectionString: DATABASE_URL! });
+  closeDb = () => pool.end();
+  db = drizzle({ client: pool, schema }) as unknown as Parameters<typeof createAuth>[0];
+} else {
+  const { neon } = await import("@neondatabase/serverless");
+  const { drizzle } = await import("drizzle-orm/neon-http");
+  db = drizzle({ client: neon(DATABASE_URL!), schema }) as unknown as Parameters<
+    typeof createAuth
+  >[0];
+}
 
-const r = await bootstrapDashboardAuth(auth, db, {
-  owner: {
-    email: DASHBOARD_AUTH_EMAIL!.toLowerCase(),
-    password: DASHBOARD_AUTH_PASSWORD!,
-  },
-  organization: {
-    name: organizationName,
-    slug: DASHBOARD_ORG_SLUG ?? "ai-workflow",
-  },
-  sso:
-    SSO_ISSUER && SSO_ALLOWED_DOMAIN && SSO_CLIENT_ID && SSO_CLIENT_SECRET
-      ? {
+try {
+  const auth = createAuth(db, {
+    secret: BETTER_AUTH_SECRET!,
+    baseURL: BETTER_AUTH_URL!,
+    trustedOrigins: DASHBOARD_ORIGIN ? [DASHBOARD_ORIGIN] : [],
+  });
+  const organizationName = await loadSeedAuthOrganizationName(db);
+
+  const r = await bootstrapDashboardAuth(auth, db, {
+    owner: {
+      email: DASHBOARD_AUTH_EMAIL!.toLowerCase(),
+      password: DASHBOARD_AUTH_PASSWORD!,
+    },
+    organization: {
+      name: organizationName,
+      slug: DASHBOARD_ORG_SLUG ?? "ai-workflow",
+    },
+    sso:
+      SSO_ISSUER && SSO_ALLOWED_DOMAIN && SSO_CLIENT_ID && SSO_CLIENT_SECRET
+        ? {
           issuer: SSO_ISSUER,
           allowedDomain: SSO_ALLOWED_DOMAIN,
           clientId: SSO_CLIENT_ID,
           clientSecret: SSO_CLIENT_SECRET,
         }
-      : undefined,
-});
-console.log(
-  [
-    `[seed-auth-user] owner ${r.user.created ? "created" : r.user.updated ? "updated password" : "unchanged"}`,
-    `organization ${r.organization.created ? "created" : "ready"}`,
-    `owner membership ${
-      r.membership.created ? "created" : r.membership.updated ? "repaired" : "ready"
-    }`,
-    `sso ${
-      r.ssoProvider
-        ? r.ssoProvider.created
-          ? "created"
-          : r.ssoProvider.updated
-            ? "updated"
-            : "ready"
-        : "not configured"
-    }`,
-  ].join("; ") + ".",
-);
+        : undefined,
+  });
+  console.log(
+    [
+      `[seed-auth-user] owner ${r.user.created ? "created" : r.user.updated ? "updated password" : "unchanged"}`,
+      `organization ${r.organization.created ? "created" : "ready"}`,
+      `owner membership ${
+        r.membership.created ? "created" : r.membership.updated ? "repaired" : "ready"
+      }`,
+      `sso ${
+        r.ssoProvider
+          ? r.ssoProvider.created
+            ? "created"
+            : r.ssoProvider.updated
+              ? "updated"
+              : "ready"
+          : "not configured"
+      }`,
+    ].join("; ") + ".",
+  );
+} finally {
+  await closeDb?.();
+}

@@ -118,7 +118,7 @@ export async function loadRepositoryInstructionSources(
     unresolved: new Set<string>(),
   };
   const [{ Sandbox }, { getSandboxCredentials }] = await Promise.all([
-    import("@vercel/sandbox"),
+    import("../../sandbox/runtime.js").then((m) => m.loadSandboxSdk()),
     import("../../sandbox/credentials.js"),
   ]);
   const sandbox = await Sandbox.get({

@@ -42,7 +42,8 @@ export async function writeHumanDecisionsMemory(
   const memoryPath = `${WORKSPACE_ROOT_DIR}/${docPath}`;
 
   try {
-    const { Sandbox } = await import("@vercel/sandbox");
+    const { loadSandboxSdk } = await import("../../sandbox/runtime.js");
+    const { Sandbox } = await loadSandboxSdk();
     const sandbox = await Sandbox.get({ sandboxId, ...getSandboxCredentials() });
 
     const manifestResult = await sandbox.runCommand("cat", [WORKSPACE_MANIFEST_PATH]);
