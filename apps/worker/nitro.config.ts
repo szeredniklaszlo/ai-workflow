@@ -24,12 +24,20 @@ async function findFuncDirs(root: string): Promise<string[]> {
   return out;
 }
 
+const isNodeServer = process.env.NITRO_PRESET === "node-server";
+
 export default defineNitroConfig({
-  preset: "vercel",
+  preset: process.env.NITRO_PRESET || "vercel",
   // The MCP catalog intentionally uses Zod 3 while Better Auth brings Zod 4.
-  // Vercel's dependency tracer otherwise preserves the `zod/v3` subpath import
-  // but installs only the top-level Zod 4 package, crashing /mcp before auth.
-  externals: { inline: ["zod/v3"] },
+  // In standalone node-server mode, we inline zod and workflow runtime packages
+  // so Nitro's rollup externalizer doesn't generate broken pnpm virtual-store
+  // or subpath imports (zod/v3, zod/v4, @workflow/utils).
+  externals: {
+    inline: [
+      "zod/v3",
+      ...(isNodeServer ? ["zod", "workflow", "@workflow/"] : []),
+    ],
+  },
   modules: [
     "workflow/nitro",
     // Ship YAML configs into every Vercel function bundle so runtime code can

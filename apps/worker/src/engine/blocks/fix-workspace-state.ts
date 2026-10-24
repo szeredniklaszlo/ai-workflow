@@ -27,7 +27,8 @@ export interface FixWorkspaceState {
 /** Read the committed and conflict-index state of every attached repository. */
 export async function inspectFixWorkspace(sandboxId: string): Promise<FixWorkspaceState> {
   "use step";
-  const { Sandbox } = await import("@vercel/sandbox");
+  const { loadSandboxSdk } = await import("../../sandbox/runtime.js");
+  const { Sandbox } = await loadSandboxSdk();
   const sandbox = await Sandbox.get({ sandboxId, ...getSandboxCredentials() });
   const manifestResult = await sandbox.runCommand("cat", [WORKSPACE_MANIFEST_PATH]);
   if (manifestResult.exitCode !== 0) {
@@ -81,7 +82,8 @@ export async function restoreReadOnlyFixRepositories(
   trustedManifest: WorkspaceManifestV2,
 ): Promise<string[]> {
   "use step";
-  const { Sandbox } = await import("@vercel/sandbox");
+  const { loadSandboxSdk } = await import("../../sandbox/runtime.js");
+  const { Sandbox } = await loadSandboxSdk();
   const sandbox = await Sandbox.get({ sandboxId, ...getSandboxCredentials() });
   const restored: string[] = [];
 

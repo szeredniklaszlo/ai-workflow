@@ -32,7 +32,8 @@
     },
     "apps/worker": {
       "entry": [
-        "src/services/*/index.ts"
+        "src/services/*/index.ts",
+        "e2e/scripts/*.ts"
       ]
     },
     "packages/*": {

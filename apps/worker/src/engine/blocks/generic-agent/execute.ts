@@ -70,7 +70,8 @@ async function blockGenericAgentCommitGuardStep(
   runtime?: ResolvedHarnessRuntime,
 ): Promise<AgentProtocolResult<void>> {
   "use step";
-  const { Sandbox } = await import("@vercel/sandbox");
+  const { loadSandboxSdk } = await import("../../../sandbox/runtime.js");
+  const { Sandbox } = await loadSandboxSdk();
   const { getSandboxCredentials } = await import("../../../sandbox/credentials.js");
   const { createAgentAdapter } = await import("../../../sandbox/agents/index.js");
 
@@ -146,7 +147,8 @@ async function blockGenericAgentStartPhaseStep(
   );
   const spec = createAgentAdapter(agentKind, runtime?.cliSpec).cliSpec;
   try {
-    const { Sandbox } = await import("@vercel/sandbox");
+    const { loadSandboxSdk } = await import("../../../sandbox/runtime.js");
+    const { Sandbox } = await loadSandboxSdk();
     const { getSandboxCredentials } = await import("../../../sandbox/credentials.js");
 
     const sandbox = await Sandbox.get({ sandboxId, ...getSandboxCredentials() });

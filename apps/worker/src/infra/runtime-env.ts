@@ -73,8 +73,17 @@ export const env = createEnv({
     VERCEL_TEAM_ID: z.string().min(1).optional(),
     VERCEL_PROJECT_ID: z.string().min(1).optional(),
 
+    // Sandbox runtime provider (defaults to Vercel Sandbox microVMs; set to
+    // "docker" for self-hosted / on-prem container execution).
+    SANDBOX_KIND: z.enum(["vercel", "docker"]).default("vercel"),
+    DOCKER_SANDBOX_IMAGE: z.string().min(1).default("ai-workflow-sandbox:latest"),
+
     // Cron
     CRON_SECRET: z.string().min(1).optional(),
+    CRON_IN_PROCESS: z
+      .enum(["true", "false"])
+      .default("false")
+      .transform((v) => v === "true"),
 
     // Webhook trigger blocks: 32-byte AES-256-GCM key (64 hex chars) that
     // encrypts per-endpoint signing secrets at rest. Intentionally optional:
@@ -86,8 +95,9 @@ export const env = createEnv({
      *  own key, never the webhook key: see infra/secrets-crypto.ts. */
     INTEGRATION_SECRETS_KEY: z.string().min(1).optional(),
 
-    // Neon Postgres (run registry + post-PR gate store) — auto-injected by
-    // the Neon Vercel Marketplace integration, one branch per environment.
+    // Database (Neon HTTP serverless driver by default; set DATABASE_DRIVER=postgres
+    // for standard TCP PostgreSQL in self-hosted / Docker deployments).
+    DATABASE_DRIVER: z.enum(["neon", "postgres"]).default("neon"),
     DATABASE_URL: z.string().url(),
 
     // Better Auth (dashboard human login). The worker is the auth authority.
@@ -134,7 +144,7 @@ export const env = createEnv({
   ) {
     throw new Error(
       "Invalid environment variables:\n" +
-        "  COMMIT_AUTHOR and COMMIT_EMAIL must be set together (or both omitted, to take the automation account of the version control provider)",
+      "  COMMIT_AUTHOR and COMMIT_EMAIL must be set together (or both omitted, to take the automation account of the version control provider)",
     );
   }
   const ssoKeys = [
@@ -146,19 +156,19 @@ export const env = createEnv({
   if (ssoKeys.some(Boolean) && !ssoKeys.every(Boolean)) {
     throw new Error(
       "Invalid environment variables:\n" +
-        "  SSO_ISSUER, SSO_ALLOWED_DOMAIN, SSO_CLIENT_ID, and SSO_CLIENT_SECRET must be set together",
+      "  SSO_ISSUER, SSO_ALLOWED_DOMAIN, SSO_CLIENT_ID, and SSO_CLIENT_SECRET must be set together",
     );
   }
   if (env.RESEND_API_KEY && !env.RESEND_FROM_EMAIL) {
     throw new Error(
       "Invalid environment variables:\n" +
-        "  RESEND_API_KEY requires RESEND_FROM_EMAIL",
+      "  RESEND_API_KEY requires RESEND_FROM_EMAIL",
     );
   }
   if (env.RESEND_WEBHOOK_SECRET && !env.RESEND_API_KEY) {
     throw new Error(
       "Invalid environment variables:\n" +
-        "  RESEND_WEBHOOK_SECRET requires RESEND_API_KEY",
+      "  RESEND_WEBHOOK_SECRET requires RESEND_API_KEY",
     );
   }
   // Same rule as isValidWebhookEncryptionKey in src/infra/webhook-crypto.ts, which
@@ -170,7 +180,7 @@ export const env = createEnv({
   ) {
     throw new Error(
       "Invalid environment variables:\n" +
-        "  WEBHOOK_TRIGGER_ENCRYPTION_KEY must be 64 hex characters (a 32-byte AES-256 key)",
+      "  WEBHOOK_TRIGGER_ENCRYPTION_KEY must be 64 hex characters (a 32-byte AES-256 key)",
     );
   }
   // Refused at boot rather than at the moment an admin presses Save: a key that
@@ -180,7 +190,7 @@ export const env = createEnv({
   if (env.INTEGRATION_SECRETS_KEY && !isValidIntegrationSecretsKey(env.INTEGRATION_SECRETS_KEY)) {
     throw new Error(
       "Invalid environment variables:\n" +
-        "  INTEGRATION_SECRETS_KEY must be 64 hex characters (a 32-byte AES-256 key)",
+      "  INTEGRATION_SECRETS_KEY must be 64 hex characters (a 32-byte AES-256 key)",
     );
   }
 }

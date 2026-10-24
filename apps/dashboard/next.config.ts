@@ -21,6 +21,9 @@ function integrationPageRedirects() {
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  ...(process.env.NEXT_BUILD_OUTPUT === "standalone"
+    ? { output: "standalone" as const }
+    : {}),
   /**
    * Screens that moved, kept working.
    *

@@ -2,7 +2,8 @@
  * Build-time migration runner + environment-isolation guard.
  *
  * Runs as part of `pnpm build` on Vercel, where the Neon Marketplace
- * integration injects DATABASE_URL per environment (branch-per-env).
+ * integration injects DATABASE_URL per environment (branch-per-env),
+ * or at container startup in self-hosted Docker deployments.
  * Keeps deployment one-click: every deploy is schema-self-healing.
  *
  * Guard: the env_marker row pins this database branch to one VERCEL_ENV.
@@ -25,7 +26,9 @@ config({ path: [".env.local", ".env"], quiet: true });
 
 import { execSync } from "node:child_process";
 import { neon } from "@neondatabase/serverless";
-import { drizzle } from "drizzle-orm/neon-http";
+import { drizzle as drizzleNeon } from "drizzle-orm/neon-http";
+import { drizzle as drizzleNodePg } from "drizzle-orm/node-postgres";
+import pg from "pg";
 import type { Db } from "../src/db/client.js";
 import * as schema from "../src/db/schema.js";
 import { assertNoRetiredEnvironmentVariables } from "../src/services/settings/retired-environment.js";
@@ -44,7 +47,10 @@ if (!url) {
 // so a shared build never applies an unmerged migration.
 execSync("pnpm exec drizzle-kit migrate", { stdio: "inherit" });
 
-const sql = neon(url);
+const useNodePg = process.env.DATABASE_DRIVER === "postgres";
+const pgPool = useNodePg ? new pg.Pool({ connectionString: url }) : null;
+const neonSql = useNodePg ? null : neon(url);
+
 const vercelEnv = process.env.VERCEL_ENV ?? "development";
 const sharedWith = process.env.DATABASE_SHARED_WITH;
 // Normalize: strip Neon's -pooler suffix and any port so pooled vs direct
@@ -52,44 +58,70 @@ const sharedWith = process.env.DATABASE_SHARED_WITH;
 // permissive re-claim path, which must mean a genuinely different endpoint).
 const host = new URL(url).hostname.toLowerCase().replace(/-pooler(?=\.)/, "");
 
-const readMarker = async () => {
-  const rows = await sql`SELECT env, endpoint_host FROM env_marker WHERE id = 1`;
-  const row = rows[0] as
-    | { env: string; endpoint_host: string }
-    | undefined;
-  return row
-    ? { env: row.env, endpointHost: row.endpoint_host }
-    : null;
-};
+try {
+  const readMarker = async () => {
+    const rows = pgPool
+      ? (await pgPool.query("SELECT env, endpoint_host FROM env_marker WHERE id = 1")).rows
+      : await neonSql!`SELECT env, endpoint_host FROM env_marker WHERE id = 1`;
+    const row = rows[0] as
+      | { env: string; endpoint_host: string }
+      | undefined;
+    return row
+      ? { env: row.env, endpointHost: row.endpoint_host }
+      : null;
+  };
 
-let marker = await readMarker();
-let decision = decideMarkerAction({ marker, host, vercelEnv, sharedWith });
+  let marker = await readMarker();
+  let decision = decideMarkerAction({ marker, host, vercelEnv, sharedWith });
 
-if (decision.action === "claim") {
-  await sql`
-    INSERT INTO env_marker (id, env, endpoint_host)
-    VALUES (1, ${vercelEnv}, ${host})
-    ON CONFLICT (id) DO NOTHING
-  `;
-  marker = await readMarker();
-  decision = decideMarkerAction({ marker, host, vercelEnv, sharedWith });
-}
+  if (decision.action === "claim") {
+    if (pgPool) {
+      await pgPool.query(
+        "INSERT INTO env_marker (id, env, endpoint_host) VALUES (1, $1, $2) ON CONFLICT (id) DO NOTHING",
+        [vercelEnv, host],
+      );
+    } else {
+      await neonSql!`
+        INSERT INTO env_marker (id, env, endpoint_host)
+        VALUES (1, ${vercelEnv}, ${host})
+        ON CONFLICT (id) DO NOTHING
+      `;
+    }
+    marker = await readMarker();
+    decision = decideMarkerAction({ marker, host, vercelEnv, sharedWith });
+  }
 
-if (decision.action === "reclaim") {
-  console.warn(decision.message);
-  await sql`UPDATE env_marker SET env = ${vercelEnv}, endpoint_host = ${host} WHERE id = 1`;
-} else if (decision.action === "fatal") {
-  console.error(decision.message);
-  process.exitCode = 1;
-} else if (decision.action === "claim") {
-  console.error("[db-migrate] FATAL: failed to claim the database marker.");
-  process.exitCode = 1;
-} else {
-  console.log(decision.message);
-}
+  if (decision.action === "reclaim") {
+    console.warn(decision.message);
+    if (pgPool) {
+      await pgPool.query(
+        "UPDATE env_marker SET env = $1, endpoint_host = $2 WHERE id = 1",
+        [vercelEnv, host],
+      );
+    } else {
+      await neonSql!`UPDATE env_marker SET env = ${vercelEnv}, endpoint_host = ${host} WHERE id = 1`;
+    }
+  } else if (decision.action === "fatal") {
+    console.error(decision.message);
+    process.exitCode = 1;
+  } else if (decision.action === "claim") {
+    console.error("[db-migrate] FATAL: failed to claim the database marker.");
+    process.exitCode = 1;
+  } else {
+    console.log(decision.message);
+  }
 
-if (process.exitCode !== 1) {
-  const db = drizzle({ client: sql, schema }) as unknown as Db;
-  await seedDeploymentDefaults(db);
-  console.log("[db-migrate] System harness profiles and workflow templates are ready.");
+  if (process.exitCode !== 1) {
+    const db = (
+      pgPool
+        ? drizzleNodePg({ client: pgPool, schema })
+        : drizzleNeon({ client: neonSql!, schema })
+    ) as unknown as Db;
+    await seedDeploymentDefaults(db);
+    console.log("[db-migrate] System harness profiles and workflow templates are ready.");
+  }
+} finally {
+  if (pgPool) {
+    await pgPool.end();
+  }
 }

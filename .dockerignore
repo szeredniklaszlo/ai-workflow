@@ -1,0 +1,38 @@
+# Dependencies
+node_modules
+**/node_modules
+
+# Build outputs & caches
+.next
+**/.next
+.nitro
+**/.nitro
+.output
+**/.output
+.vercel
+**/.vercel
+.workflow-data
+**/.workflow-data
+.workflow-vitest
+**/.workflow-vitest
+dist
+**/dist
+build
+out
+coverage
+*.tsbuildinfo
+
+# Git & IDE
+.git
+.github
+.idea
+.vscode
+
+# Local env files (passed at runtime via docker-compose, never baked into images)
+.env
+.env.*
+!.env.example
+!.env.docker.example
+apps/**/.env
+apps/**/.env.*
+!apps/**/.env.example

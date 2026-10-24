@@ -1,0 +1,75 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-aiworkflow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aiworkflow}
+      POSTGRES_DB: ${POSTGRES_DB:-aiworkflow}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-aiworkflow} -d ${POSTGRES_DB:-aiworkflow}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  sandbox-image:
+    build:
+      context: .
+      dockerfile: docker/agent-sandbox/Dockerfile
+    image: ${DOCKER_SANDBOX_IMAGE:-ai-workflow-sandbox:latest}
+    entrypoint: ["true"]
+    restart: "no"
+
+  worker:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      sandbox-image:
+        condition: service_completed_successfully
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      NITRO_PORT: 3000
+      NITRO_HOST: 0.0.0.0
+      DATABASE_DRIVER: ${DATABASE_DRIVER:-postgres}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://aiworkflow:aiworkflow@postgres:5432/aiworkflow}
+      SANDBOX_KIND: ${SANDBOX_KIND:-docker}
+      DOCKER_SANDBOX_IMAGE: ${DOCKER_SANDBOX_IMAGE:-ai-workflow-sandbox:latest}
+      CRON_IN_PROCESS: ${CRON_IN_PROCESS:-true}
+    ports:
+      - "${WORKER_PORT:-3000}:3000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - worker_workflow_data:/app/apps/worker/.workflow-data
+      - worker_nitro_data:/app/apps/worker/.nitro
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: apps/dashboard/Dockerfile
+      args:
+        NEXT_PUBLIC_HARNESS_PROFILE_AUTHORING_ENABLED: ${NEXT_PUBLIC_HARNESS_PROFILE_AUTHORING_ENABLED:-0}
+    restart: unless-stopped
+    depends_on:
+      - worker
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      HOSTNAME: 0.0.0.0
+      WORKER_BASE_URL: ${WORKER_INTERNAL_URL:-http://worker:3000}
+      NEXT_PUBLIC_HARNESS_PROFILE_AUTHORING_ENABLED: ${NEXT_PUBLIC_HARNESS_PROFILE_AUTHORING_ENABLED:-0}
+    ports:
+      - "${DASHBOARD_PORT:-3001}:3001"
+
+volumes:
+  postgres_data:
+  worker_workflow_data:
+  worker_nitro_data:

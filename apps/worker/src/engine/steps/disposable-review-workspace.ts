@@ -87,7 +87,8 @@ export async function provisionDisposableReviewWorkspaceStep(
 ): Promise<DisposableReviewWorkspaceProvisionResult> {
   "use step";
   const { randomUUID } = await import("node:crypto");
-  const { Sandbox } = await import("@vercel/sandbox");
+  const { loadSandboxSdk } = await import("../../sandbox/runtime.js");
+  const { Sandbox } = await loadSandboxSdk();
   const { loadAdaptersPort, loadEnvironmentPort } = await import("../internal/ports.js");
   const { env } = await loadEnvironmentPort();
   const { createAgentAdapter } = await import("../../sandbox/agents/index.js");
@@ -501,7 +502,8 @@ export async function verifyDisposableReviewWorkspaceStep(
   expectedRepositories: DisposableReviewRepository[],
 ): Promise<DisposableReviewWorkspaceVerification> {
   "use step";
-  const { Sandbox } = await import("@vercel/sandbox");
+  const { loadSandboxSdk } = await import("../../sandbox/runtime.js");
+  const { Sandbox } = await loadSandboxSdk();
   const { getSandboxCredentials } = await import("../../sandbox/credentials.js");
   const { parseVerifiedWorkspaceManifest } = await import("../../sandbox/repo-workspace.js");
 

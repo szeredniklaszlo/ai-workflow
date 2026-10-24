@@ -33,7 +33,8 @@ export async function stopSandboxAndConfirm(
 /** Stop exactly the sandbox ids recorded for one owner; never discover by branch. */
 export async function stopSandboxesByIds(sandboxIds: readonly string[]): Promise<number> {
   if (sandboxIds.length === 0) return 0;
-  const { Sandbox } = await import("@vercel/sandbox");
+  const { loadSandboxSdk } = await import("./runtime.js");
+  const { Sandbox } = await loadSandboxSdk();
   const credentials = getSandboxCredentials();
   const uniqueIds = [...new Set(sandboxIds)];
   const results = await Promise.all(

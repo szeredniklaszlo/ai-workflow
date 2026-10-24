@@ -154,7 +154,8 @@ export async function seedRepoMemoryStep(
       runId: input.runId,
       step: "seedRepoMemory",
     });
-    const { Sandbox } = await import("@vercel/sandbox");
+    const { loadSandboxSdk } = await import("../../sandbox/runtime.js");
+    const { Sandbox } = await loadSandboxSdk();
     const { getSandboxCredentials } = await import("../../sandbox/credentials.js");
     const { activeMemory } = await import("../support/memory-runtime.js");
     const memory = await activeMemory();

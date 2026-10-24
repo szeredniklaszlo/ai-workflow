@@ -67,7 +67,8 @@ export class SandboxManager {
       throw new Error("Cannot provision sandbox without selected repositories");
     }
 
-    const { Sandbox } = await import("@vercel/sandbox");
+    const { loadSandboxSdk } = await import("./runtime.js");
+    const { Sandbox } = await loadSandboxSdk();
     const manifest = buildWorkspaceManifest({
       branchName: input.branchName,
       repositories: input.repositories,
