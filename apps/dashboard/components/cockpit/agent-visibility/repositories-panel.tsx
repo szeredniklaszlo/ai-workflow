@@ -10,6 +10,7 @@
  */
 import React from "react";
 
+import { useCockpit } from "@/components/cockpit/context";
 import { Button, CkChip } from "@/components/ui";
 import { apiClient } from "@/lib/api/client";
 import { readWorkScopeWithRounds, type WorkScopeEditRead, type WorkScopeRead } from "@/lib/agent-visibility/contract";
@@ -38,19 +39,19 @@ import { RoundView } from "./round-view";
  * worker writes the record under whichever tracker this deployment connected,
  * so a hardcoded segment reads an address nothing was ever written to and the
  * panel shows an empty record instead of the work somebody is looking at.
- * Taken from the build's own integrations, which is exact while one of them
- * serves `issue_tracker`; the assertion below is what makes a second one a
- * failing test rather than a silently wrong key.
  */
 const TICKET_PROVIDERS = integrationsProviding("issue_tracker").map(
   (integration) => integration.id,
 );
 
-export function panelTicketSubjectKey(ticketKey: string): string {
-  const provider = TICKET_PROVIDERS.length === 1 ? TICKET_PROVIDERS[0] : undefined;
+export function panelTicketSubjectKey(ticketKey: string, trackerId?: string): string {
+  if (ticketKey.startsWith("ticket:")) {
+    return ticketKey;
+  }
+  const provider = trackerId ?? TICKET_PROVIDERS[0];
   if (provider === undefined) {
     throw new Error(
-      "This build ships more than one issue tracker, so the ticket's subject key cannot be derived from the build alone: pass the run's tracker id into this panel.",
+      "This build ships no issue tracker integration, so the ticket's subject key cannot be derived.",
     );
   }
   return ticketSubjectKey(provider, ticketKey);
@@ -147,15 +148,22 @@ function Rounds({ subjectKey, record }: { subjectKey: string; record: WorkScopeR
 
 export function RepositoriesPanel({
   ticketKey,
+  trackerId,
+  subjectKey: explicitSubjectKey,
   autoOpen = false,
 }: {
   ticketKey: string;
+  /** The tracker that owns this ticket, when known by the caller. */
+  trackerId?: string;
+  /** Optional full subject key. */
+  subjectKey?: string;
   /** May open itself when a question is waiting. False on a page opened for
    *  one run: there the trace is what the person came for, and the waiting
    *  chip in this header already carries the news. */
   autoOpen?: boolean;
 }) {
-  const subjectKey = panelTicketSubjectKey(ticketKey);
+  const { issueTrackerId } = useCockpit();
+  const subjectKey = explicitSubjectKey ?? panelTicketSubjectKey(ticketKey, trackerId ?? issueTrackerId);
   const [toggled, setToggled] = React.useState<boolean | null>(null);
   const [record, setRecord] = React.useState<WorkScopeRead | null>(null);
   const [failure, setFailure] = React.useState<LoadFailure | null>(null);
