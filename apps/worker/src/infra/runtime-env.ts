@@ -29,6 +29,9 @@ export const env = createEnv({
     VCS_BOT_LOGIN: z.string().trim().min(1).optional(),
 
     // Agent
+    // OpenRouter (optional provider for in-process LLM calls and agent harness gateway)
+    OPENROUTER_API_KEY: z.string().min(1).optional(),
+    OPENROUTER_BASE_URL: z.string().url().default("https://openrouter.ai/api/v1"),
     ANTHROPIC_API_KEY: z.string().min(1).optional(),
     // Optional overrides for the git identity used inside the sandbox.
     // When both are unset the identity comes from the version control

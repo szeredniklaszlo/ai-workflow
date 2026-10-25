@@ -34,8 +34,8 @@ function deploymentCapabilities(): Omit<
 > {
   return {
     agentProviders: {
-      claude: Boolean(env.ANTHROPIC_API_KEY),
-      codex: Boolean(env.CODEX_API_KEY || env.CODEX_CHATGPT_OAUTH_TOKEN),
+      claude: Boolean(env.ANTHROPIC_API_KEY || env.OPENROUTER_API_KEY),
+      codex: Boolean(env.CODEX_API_KEY || env.CODEX_CHATGPT_OAUTH_TOKEN || env.OPENROUTER_API_KEY),
     },
     llmProviders: directLlmCredentials(),
     webhookTriggerConfigured: Boolean(env.WEBHOOK_TRIGGER_ENCRYPTION_KEY),
@@ -48,10 +48,11 @@ function deploymentCapabilities(): Omit<
  * is refused by the API, so it does not count. One home: the editor's gates and
  * the integration block step both read it.
  */
-export function directLlmCredentials(): { claude: boolean; codex: boolean } {
+export function directLlmCredentials(): { claude: boolean; codex: boolean; openrouter: boolean } {
   return {
     claude: Boolean(env.ANTHROPIC_API_KEY && !env.ANTHROPIC_API_KEY.startsWith("sk-ant-oat")),
     codex: Boolean(env.CODEX_API_KEY),
+    openrouter: Boolean(env.OPENROUTER_API_KEY),
   };
 }
 

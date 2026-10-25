@@ -39,7 +39,12 @@ async function blockProvisionAgentSandboxStep(
   const { createAgentAdapter } = await import("../../sandbox/agents/index.js");
 
   const adapter = createAgentAdapter(agentKind, runtime?.cliSpec);
-  if (agentKind === "codex" && !env.CODEX_API_KEY && !env.CODEX_CHATGPT_OAUTH_TOKEN) {
+  if (
+    agentKind === "codex" &&
+    !env.CODEX_API_KEY &&
+    !env.CODEX_CHATGPT_OAUTH_TOKEN &&
+    !env.OPENROUTER_API_KEY
+  ) {
     const { runtimePreparationError } = await import("../../sandbox/agents/protocol.js");
     const error = runtimePreparationError(
       adapter.cliSpec,
@@ -55,7 +60,7 @@ async function blockProvisionAgentSandboxStep(
       },
     };
   }
-  if (agentKind === "claude" && !env.ANTHROPIC_API_KEY) {
+  if (agentKind === "claude" && !env.ANTHROPIC_API_KEY && !env.OPENROUTER_API_KEY) {
     const { runtimePreparationError } = await import("../../sandbox/agents/protocol.js");
     const error = runtimePreparationError(
       adapter.cliSpec,
@@ -104,6 +109,8 @@ async function blockProvisionAgentSandboxStep(
       anthropicApiKey: env.ANTHROPIC_API_KEY,
       codexApiKey: env.CODEX_API_KEY,
       codexChatGptOauthToken: env.CODEX_CHATGPT_OAUTH_TOKEN,
+      openrouterApiKey: env.OPENROUTER_API_KEY,
+      openrouterBaseUrl: env.OPENROUTER_BASE_URL,
     };
     await adapter.install(sandbox);
     await adapter.configure(sandbox, {
@@ -232,6 +239,8 @@ export async function prepareHarnessAgentInvocationStep(
     const { agentTracingPlans } = await import("../support/integration-tracing.js");
     await adapter.configure(sandbox, {
       ...credentials,
+      openrouterApiKey: env.OPENROUTER_API_KEY,
+      openrouterBaseUrl: env.OPENROUTER_BASE_URL,
       model,
       tracing: await agentTracingPlans({ harness: agentKind, run: tracingRun }),
       runtime: runtime.paths,

@@ -6,7 +6,7 @@ const paramsSchema = z
     prompt: z.string().optional(),
     system: z.string().optional(),
     model: z.string().trim().max(200).regex(/^[A-Za-z0-9._:/-]+$/u).optional(),
-    provider: z.enum(["claude", "codex"]).optional(),
+    provider: z.enum(["claude", "codex", "openrouter"]).optional(),
     outputSchema: z.string().optional(),
   })
   .strict();

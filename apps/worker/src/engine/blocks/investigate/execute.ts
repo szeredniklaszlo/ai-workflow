@@ -248,7 +248,7 @@ async function recordInvestigateSend(
 
 async function blockInvestigateKeywordsStep(input: {
   model: string;
-  provider?: "claude" | "codex";
+  provider?: "claude" | "codex" | "openrouter";
   prompt: string;
   /** What this send gave the model. Read as absent on a journal written
    *  before it existed, which is a send with no briefing. */
@@ -512,7 +512,7 @@ blockInvestigateRetrievalStep.maxRetries = 0;
 
 async function blockInvestigateTheoryStep(input: {
   model: string;
-  provider?: "claude" | "codex";
+  provider?: "claude" | "codex" | "openrouter";
   prompt: string;
   /** What this send gave the model. Read as absent on a journal written
    *  before it existed, which is a send with no briefing. */

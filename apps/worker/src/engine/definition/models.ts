@@ -5,6 +5,8 @@ import {
   defaultBuiltinHarnessProfile,
   recognised,
   selectable,
+  OPENROUTER_RECOGNISED_MODELS,
+  DEFAULT_OPENROUTER_MODEL,
 } from "@shared/harness";
 import type { IssueTrackerAdapter } from "../../adapters/issue-tracker/types.js";
 import { env } from "../../infra/vcs-config.js";
@@ -15,6 +17,7 @@ export const FALLBACK_MODELS = recognised;
 export interface AvailableModels {
   claude: string[];
   codex: string[];
+  openrouter?: string[];
 }
 
 const MODEL_LIST_CAP = 15;
@@ -29,12 +32,15 @@ export async function fetchAvailableModels(): Promise<AvailableModels> {
   if (cache && cache.expiresAt > now) {
     return cache.value;
   }
-  const [claude, codex] = await Promise.all([fetchClaudeModels(), fetchCodexModels()]);
-  const value: AvailableModels = { claude, codex };
+  const [claude, codex, openrouter] = await Promise.all([
+    fetchClaudeModels(),
+    fetchCodexModels(),
+    fetchOpenRouterModels(),
+  ]);
+  const value: AvailableModels = { claude, codex, openrouter };
   cache = { value, expiresAt: now + CACHE_TTL_MS };
   return value;
 }
-
 export async function fetchTicketStatuses(
   issueTracker?: IssueTrackerAdapter,
 ): Promise<Array<{ id: string; name: string }>> {
@@ -49,6 +55,26 @@ export async function fetchTicketStatuses(
     // The editor remains usable during provider outages. Passing an empty list
     // makes buildWorkflowEditorOptions expose the configured legacy targets.
     return [];
+  }
+}
+
+async function fetchOpenRouterModels(): Promise<string[]> {
+  const apiKey = env.OPENROUTER_API_KEY;
+  if (!apiKey) return [...OPENROUTER_RECOGNISED_MODELS];
+  try {
+    const response = await fetch("https://openrouter.ai/api/v1/models", {
+      headers: { Authorization: `Bearer ${apiKey}` },
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    });
+    if (!response.ok) return [...OPENROUTER_RECOGNISED_MODELS];
+    const body = (await response.json()) as { data?: { id?: unknown }[] };
+    const ids = (body.data ?? [])
+      .map((entry) => entry.id)
+      .filter((id): id is string => typeof id === "string" && id.length > 0)
+      .slice(0, MODEL_LIST_CAP);
+    return ids.length > 0 ? ids : [...OPENROUTER_RECOGNISED_MODELS];
+  } catch {
+    return [...OPENROUTER_RECOGNISED_MODELS];
   }
 }
 
@@ -140,6 +166,14 @@ export function buildWorkflowEditorOptions(
         provider: "codex",
         modelIds: dedupePrepend(configuredModels.codex, models.codex),
       }),
+      ...(models.openrouter
+        ? {
+          openrouter: dedupePrepend(
+            DEFAULT_OPENROUTER_MODEL,
+            models.openrouter,
+          ),
+        }
+        : {}),
     },
     ticketStatusTargets:
       ticketStatuses.length > 0

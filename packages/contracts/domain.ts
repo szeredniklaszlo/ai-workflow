@@ -778,7 +778,7 @@ export interface WorkflowEditorOptions {
   agentKind: "claude" | "codex";
   defaultModel: string;
   defaultModels: { claude: string; codex: string };
-  models: { claude: string[]; codex: string[] };
+  models: { claude: string[]; codex: string[]; openrouter?: string[]; };
   ticketStatusTargets: { value: TicketStatusTarget; label: string }[];
   blockRegistry: Record<WorkflowBlockType, WorkflowBlockContract>;
   runBindingSchema: WorkflowValueSchema;

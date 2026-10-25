@@ -63,6 +63,8 @@ export async function generateStructured(
     credentials: {
       anthropicApiKey: env.ANTHROPIC_API_KEY,
       codexApiKey: env.CODEX_API_KEY,
+      openrouterApiKey: env.OPENROUTER_API_KEY,
+      openrouterBaseUrl: env.OPENROUTER_BASE_URL,
     },
   };
   if (system !== undefined) providerInput.system = system;

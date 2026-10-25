@@ -76,7 +76,14 @@ export class CodexAgentAdapter implements AgentAdapter {
   }
 
   async configure(sandbox: RunnableSandbox, opts: ConfigureOpts): Promise<void> {
-    if (!opts.codexApiKey && !opts.codexChatGptOauthToken) {
+    const useOpenRouter = Boolean(
+      opts.openrouterApiKey &&
+      ((!opts.codexApiKey && !opts.codexChatGptOauthToken) ||
+        opts.model.includes("/") ||
+        opts.model.startsWith("openrouter")),
+    );
+
+    if (!opts.codexApiKey && !opts.codexChatGptOauthToken && !useOpenRouter) {
       throw runtimePreparationError(
         this.cliSpec,
         "Codex authentication credentials were not configured.",
@@ -91,12 +98,16 @@ export class CodexAgentAdapter implements AgentAdapter {
       );
     }
 
-    // 1) auth env file. Codex CLI auto-reads OPENAI_API_KEY when no auth.json
-    // exists; we additionally run `codex login --with-api-key` below to
-    // populate ~/.codex/auth.json so subsequent invocations work without env.
+    // 1) auth env file. Codex CLI auto-reads OPENAI_API_KEY and OPENAI_BASE_URL.
     const envLines: string[] = [];
-    if (opts.codexApiKey) envLines.push(`export OPENAI_API_KEY=${shellQuote(opts.codexApiKey)}`);
-    if (!opts.codexApiKey && opts.codexChatGptOauthToken) {
+    if (useOpenRouter && opts.openrouterApiKey) {
+      envLines.push(
+        `export OPENAI_API_KEY=${shellQuote(opts.openrouterApiKey)}`,
+        `export OPENAI_BASE_URL=${shellQuote(opts.openrouterBaseUrl ?? "https://openrouter.ai/api/v1")}`,
+      );
+    } else if (opts.codexApiKey) {
+      envLines.push(`export OPENAI_API_KEY=${shellQuote(opts.codexApiKey)}`);
+    } else if (opts.codexChatGptOauthToken) {
       envLines.push(
         `export CODEX_ACCESS_TOKEN=${shellQuote(opts.codexChatGptOauthToken)}`,
       );
@@ -138,10 +149,17 @@ export class CodexAgentAdapter implements AgentAdapter {
       await requireProviderSetup(configureCli, this.cliSpec, "Codex configuration setup");
     }
 
-    // 3) Materialize the selected authentication mode into the invocation-only
-    // profile home. API keys and ChatGPT access tokens use separate CLI login
-    // contracts; API-key auth wins when both operator settings are present.
-    if (opts.codexApiKey) {
+    // 3) Materialize the selected authentication mode into the profile home.
+    if (useOpenRouter && opts.openrouterApiKey) {
+      const login = await sandbox.runCommand("bash", [
+        "-c",
+        withRuntimeHome(
+          opts.runtime,
+          `[ -f ${opts.runtime ? shellQuote(opts.runtime.envPath) : "/tmp/agent-env.sh"} ] && source ${opts.runtime ? shellQuote(opts.runtime.envPath) : "/tmp/agent-env.sh"}; printenv OPENAI_API_KEY | ${opts.runtime ? shellQuote(opts.runtime.executablePath) : "codex"} login --with-api-key`,
+        ),
+      ]);
+      await requireProviderSetup(login, this.cliSpec, "Codex OpenRouter API-key login");
+    } else if (opts.codexApiKey) {
       const login = await sandbox.runCommand("bash", [
         "-c",
         withRuntimeHome(

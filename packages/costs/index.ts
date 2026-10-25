@@ -21,7 +21,7 @@ export interface CostUsage {
   tokens: CostTokens | null;
 }
 
-export type CostProviderKind = "claude" | "codex";
+export type CostProviderKind = "claude" | "codex" | "openrouter";
 
 /**
  * How one phase can be priced. Either harness may report a dollar cost, and

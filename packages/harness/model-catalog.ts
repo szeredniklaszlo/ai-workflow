@@ -36,6 +36,16 @@ export const CANARY_FIXTURE_MODELS = {
   codex: "gpt-5.4-mini",
 } as const satisfies Record<HarnessProvider, string>;
 
+// OpenRouter recognised models and defaults for direct LLM execution
+export const OPENROUTER_RECOGNISED_MODELS = [
+  "openai/gpt-6.1-sol",
+  "openai/gpt-6-luna",
+  "z-ai/glm-5.3",
+  "z-ai/glm-5.3-flash",
+] as const;
+
+export const DEFAULT_OPENROUTER_MODEL = "z-ai/glm-5.3";
+export const CALL_LLM_OPENROUTER_DEFAULT_MODEL = "z-ai/glm-5.3-flash";
 export const CALL_LLM_DEFAULT_MODEL = "claude-haiku-4-5";
 export const CODE_HYGIENE_DEFAULT_MODEL = "claude-haiku-4-5";
 export const REPO_MEMORY_DISTILL_MODEL_CODEX = "gpt-5-mini";

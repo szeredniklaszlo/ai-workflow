@@ -492,6 +492,8 @@ export interface ConfigureOpts {
   anthropicApiKey?: string;
   codexApiKey?: string;
   codexChatGptOauthToken?: string;
+  openrouterApiKey?: string;
+  openrouterBaseUrl?: string;
   model: string;
   /**
    * What the connected tracing integrations asked this sandbox for, already
