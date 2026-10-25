@@ -359,6 +359,8 @@ export async function provisionDisposableReviewWorkspaceStep(
         anthropicApiKey: env.ANTHROPIC_API_KEY,
         codexApiKey: env.CODEX_API_KEY,
         codexChatGptOauthToken: env.CODEX_CHATGPT_OAUTH_TOKEN,
+        openrouterApiKey: env.OPENROUTER_API_KEY,
+        openrouterBaseUrl: env.OPENROUTER_BASE_URL,
       };
       await adapter.install(sandbox);
       await adapter.configure(sandbox, {

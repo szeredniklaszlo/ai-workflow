@@ -19,6 +19,7 @@ export type SystemHealthConfig = {
   codexApiKey?: string;
   codexOauthToken?: string;
   codexModel?: string;
+  openrouterApiKey?: string;
   betterAuthSecret?: string;
   betterAuthUrl?: string;
   dashboardOrigin?: string;
@@ -204,11 +205,18 @@ function healthDefinitions(config: SystemHealthConfig): SystemHealthDefinition[]
       : emailCredentialsMode;
   const agentMode: SystemHealthMode =
     config.agentKind === "claude"
-      ? requiredMode([config.anthropicApiKey, config.anthropicModel])
+      ? requiredMode([config.anthropicApiKey || config.openrouterApiKey, config.anthropicModel])
       : requiredMode([
-          config.codexApiKey || config.codexOauthToken,
-          config.codexModel,
-        ]);
+        config.codexApiKey || config.codexOauthToken || config.openrouterApiKey,
+        config.codexModel,
+      ]);
+
+  const agentEnvVars =
+    config.agentKind === "claude"
+      ? (config.openrouterApiKey && !config.anthropicApiKey ? ["OPENROUTER_API_KEY"] : ["ANTHROPIC_API_KEY"])
+      : (config.openrouterApiKey && !config.codexApiKey && !config.codexOauthToken
+        ? ["OPENROUTER_API_KEY"]
+        : ["CODEX_API_KEY", "CODEX_CHATGPT_OAUTH_TOKEN"]);
 
   return [
     integration("database", "Database", "core", true, [
@@ -216,7 +224,7 @@ function healthDefinitions(config: SystemHealthConfig): SystemHealthDefinition[]
       checked("connectivity", "Connection and query", ["DATABASE_URL"], config.databaseUrl ? "configured" : "misconfigured", true),
     ]),
     integration("agent", config.agentKind === "claude" ? "Claude agent" : "Codex agent", "core", true, [
-      checked("model", "Credentials and built-in profile model", config.agentKind === "claude" ? ["ANTHROPIC_API_KEY"] : ["CODEX_API_KEY", "CODEX_CHATGPT_OAUTH_TOKEN"], agentMode, true),
+      checked("model", "Credentials and built-in profile model", agentEnvVars, agentMode, true),
     ]),
     integration("dashboard-auth", "Dashboard authentication", "auth-email", true, [
       configured("configuration", "URL, origin and session secret", ["BETTER_AUTH_SECRET", "BETTER_AUTH_URL", "DASHBOARD_ORIGIN"], authMode === "configured", authMode),

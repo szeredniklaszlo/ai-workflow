@@ -37,6 +37,7 @@ const SECRET_ENVIRONMENT_KEY =
  * day it ships.
  */
 const KNOWN_SECRET_VARIABLES: ReadonlySet<string> = new Set([
+  "OPENROUTER_API_KEY",
   "ANTHROPIC_API_KEY",
   "CODEX_API_KEY",
   "CODEX_CHATGPT_OAUTH_TOKEN",

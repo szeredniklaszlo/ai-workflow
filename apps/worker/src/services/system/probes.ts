@@ -71,15 +71,16 @@ export function configFromEnvironment(settings: SettingsSnapshot): SystemHealthC
     agentKind: defaultProfile.harness.provider,
     anthropicApiKey: env.ANTHROPIC_API_KEY,
     anthropicModel:
-      BUILTIN_HARNESS_PROFILE_MANIFESTS[
-        BUILTIN_HARNESS_PROFILE_IDS.claude
+    BUILTIN_HARNESS_PROFILE_MANIFESTS[
+      BUILTIN_HARNESS_PROFILE_IDS.claude
       ].model.id,
     codexApiKey: env.CODEX_API_KEY,
     codexOauthToken: env.CODEX_CHATGPT_OAUTH_TOKEN,
     codexModel:
-      BUILTIN_HARNESS_PROFILE_MANIFESTS[
-        BUILTIN_HARNESS_PROFILE_IDS.codex
+    BUILTIN_HARNESS_PROFILE_MANIFESTS[
+      BUILTIN_HARNESS_PROFILE_IDS.codex
       ].model.id,
+    openrouterApiKey: env.OPENROUTER_API_KEY,
     betterAuthSecret: env.BETTER_AUTH_SECRET,
     betterAuthUrl: env.BETTER_AUTH_URL,
     dashboardOrigin: env.DASHBOARD_ORIGIN,
@@ -305,6 +306,17 @@ function utcDayStart(now: Date = new Date()): Date {
 }
 
 function agentProbes(config: SystemHealthConfig): SystemHealthProbes {
+  if (config.openrouterApiKey && !config.anthropicApiKey && !config.codexApiKey) {
+    return {
+      "agent.model": async (signal) => {
+        const response = await fetch("https://openrouter.ai/api/v1/models", {
+          headers: { Authorization: `Bearer ${config.openrouterApiKey}` },
+          signal,
+        }).catch(() => null);
+        if (!response?.ok) throw new PublicHealthProbeError("OpenRouter authentication failed.");
+      },
+    };
+  }
   if (config.agentKind === "claude" && config.anthropicApiKey && config.anthropicModel) {
     if (config.anthropicApiKey.startsWith("sk-ant-oat")) return {};
     return {

@@ -444,10 +444,15 @@ async function blockPrepareWorkspaceProvisionStep(
 
   for (const { kind, runtime } of requiredAgents) {
     const spec = createAgentAdapter(kind, runtime?.cliSpec).cliSpec;
-    if (kind === "codex" && !env.CODEX_API_KEY && !env.CODEX_CHATGPT_OAUTH_TOKEN) {
+    if (
+      kind === "codex" &&
+      !env.CODEX_API_KEY &&
+      !env.CODEX_CHATGPT_OAUTH_TOKEN &&
+      !env.OPENROUTER_API_KEY
+    ) {
       const { runtimePreparationError } = await import(
         "../../../sandbox/agents/protocol.js"
-      );
+        );
       const error = runtimePreparationError(
         spec,
         "Codex authentication credentials are missing from the deployed environment.",
@@ -462,10 +467,10 @@ async function blockPrepareWorkspaceProvisionStep(
         },
       };
     }
-    if (kind === "claude" && !env.ANTHROPIC_API_KEY) {
+    if (kind === "claude" && !env.ANTHROPIC_API_KEY && !env.OPENROUTER_API_KEY) {
       const { runtimePreparationError } = await import(
         "../../../sandbox/agents/protocol.js"
-      );
+        );
       const error = runtimePreparationError(
         spec,
         "Claude authentication credentials are missing from the deployed environment.",
@@ -492,12 +497,16 @@ async function blockPrepareWorkspaceProvisionStep(
         anthropicApiKey: env.ANTHROPIC_API_KEY,
         codexApiKey: env.CODEX_API_KEY,
         codexChatGptOauthToken: env.CODEX_CHATGPT_OAUTH_TOKEN,
+        openrouterApiKey: env.OPENROUTER_API_KEY,
+        openrouterBaseUrl: env.OPENROUTER_BASE_URL,
         model,
         tracing: await agentTracingPlans({ harness: kind, run: tracingRun }),
       };
     }
     return {
       model: runtime.manifest.model.id,
+      openrouterApiKey: env.OPENROUTER_API_KEY,
+      openrouterBaseUrl: env.OPENROUTER_BASE_URL,
       runtime: runtime.paths,
       ...(runtime.modelSettings
         ? { modelSettings: runtime.modelSettings }
@@ -633,8 +642,12 @@ async function blockInstallPromotedWorkspaceAgentsStep(
       if (runtime) continue;
       const adapter = createAgentAdapter(kind);
       const missingCodexCreds =
-        kind === "codex" && !env.CODEX_API_KEY && !env.CODEX_CHATGPT_OAUTH_TOKEN;
-      const missingClaudeCreds = kind === "claude" && !env.ANTHROPIC_API_KEY;
+        kind === "codex" &&
+        !env.CODEX_API_KEY &&
+        !env.CODEX_CHATGPT_OAUTH_TOKEN &&
+        !env.OPENROUTER_API_KEY;
+      const missingClaudeCreds =
+        kind === "claude" && !env.ANTHROPIC_API_KEY && !env.OPENROUTER_API_KEY;
       if (missingCodexCreds || missingClaudeCreds) {
         const error = runtimePreparationError(
           adapter.cliSpec,
@@ -655,6 +668,8 @@ async function blockInstallPromotedWorkspaceAgentsStep(
         anthropicApiKey: env.ANTHROPIC_API_KEY,
         codexApiKey: env.CODEX_API_KEY,
         codexChatGptOauthToken: env.CODEX_CHATGPT_OAUTH_TOKEN,
+        openrouterApiKey: env.OPENROUTER_API_KEY,
+        openrouterBaseUrl: env.OPENROUTER_BASE_URL,
         model,
         tracing: await agentTracingPlans({ harness: kind, run: tracingRun }),
       });

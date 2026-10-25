@@ -1,0 +1,1 @@
+- Add OpenRouter support for in-process LLM execution and sandbox agent harnesses.

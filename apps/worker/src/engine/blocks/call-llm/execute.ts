@@ -20,26 +20,36 @@ import {
   type BlockExecutionResult,
 } from "../support/types.js";
 
-import { CALL_LLM_DEFAULT_MODEL as DEFAULT_MODEL } from "@shared/harness";
+import {
+  CALL_LLM_DEFAULT_MODEL as DEFAULT_MODEL,
+  CALL_LLM_OPENROUTER_DEFAULT_MODEL,
+} from "@shared/harness";
 
 export function resolveCallLlmTarget(
   params: Record<string, unknown>,
   runDefaultKind: "claude" | "codex",
   defaults: { claude: string; codex: string },
-): { provider: "claude" | "codex" | undefined; model: string } {
+): { provider: "claude" | "codex" | "openrouter" | undefined; model: string } {
   const explicitModel =
     typeof params.model === "string" && params.model.trim().length > 0
       ? params.model.trim()
       : undefined;
   const explicitProvider =
-    params.provider === "claude" || params.provider === "codex" ? params.provider : undefined;
+    params.provider === "claude" || params.provider === "codex" || params.provider === "openrouter"
+      ? params.provider
+      : undefined;
   if (explicitModel !== undefined) {
     return { provider: explicitProvider, model: explicitModel };
   }
   const provider = explicitProvider ?? runDefaultKind;
   return {
     provider,
-    model: provider === "codex" ? defaults.codex : DEFAULT_MODEL,
+    model:
+      provider === "codex"
+        ? defaults.codex
+        : provider === "openrouter"
+          ? CALL_LLM_OPENROUTER_DEFAULT_MODEL
+          : DEFAULT_MODEL,
   };
 }
 
@@ -53,7 +63,7 @@ interface CallLlmStepResult {
 
 async function blockCallLlmGenerateStep(input: {
   model: string;
-  provider?: "claude" | "codex";
+  provider?: "claude" | "codex" | "openrouter";
   system?: string;
   prompt: string;
   schema?: string;

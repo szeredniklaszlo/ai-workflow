@@ -545,7 +545,7 @@ function leakReviewScanPrompt(material: string): string {
 
 async function blockLeakReviewLlmScanStep(input: {
   model: string;
-  provider?: "claude" | "codex";
+  provider?: "claude" | "codex" | "openrouter";
   material: string;
   timeoutMs: number;
   /** What this send gave the model. Its prompt is composed here, so only the

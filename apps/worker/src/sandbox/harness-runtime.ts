@@ -123,6 +123,8 @@ export interface ResolvedRuntimeCredentials {
   anthropicApiKey?: string;
   codexApiKey?: string;
   codexChatGptOauthToken?: string;
+  openrouterApiKey?: string;
+  openrouterBaseUrl?: string;
 }
 
 export function resolveHarnessRuntime(input: {

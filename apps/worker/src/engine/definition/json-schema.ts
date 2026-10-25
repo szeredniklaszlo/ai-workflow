@@ -501,9 +501,9 @@ function withoutDialectMarkers(schema: JsonSchema202012): JsonSchema202012 {
 
 export function jsonSchemaForProvider(
   schema: JsonSchema202012,
-  provider: "claude" | "codex",
+  provider: "claude" | "codex" | "openrouter",
 ): JsonSchema202012 {
-  return provider === "codex"
+  return provider === "codex" || provider === "openrouter"
     ? adaptForCodex(schema, false)
     : withoutDialectMarkers(schema);
 }
@@ -537,8 +537,8 @@ function normalizeCodexValue(schema: JsonSchema202012, value: unknown): unknown 
 
 export function normalizeJsonSchemaProviderOutput(
   schema: JsonSchema202012,
-  provider: "claude" | "codex",
+  provider: "claude" | "codex" | "openrouter",
   value: unknown,
 ): unknown {
-  return provider === "codex" ? normalizeCodexValue(schema, value) : value;
+  return provider === "codex" || provider === "openrouter" ? normalizeCodexValue(schema, value) : value;
 }

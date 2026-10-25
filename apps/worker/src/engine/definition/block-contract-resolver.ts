@@ -44,7 +44,7 @@ import {
 
 export interface WorkflowBlockRegistryContext {
   agentProviders: { claude: boolean; codex: boolean };
-  llmProviders: { claude: boolean; codex: boolean };
+  llmProviders: { claude: boolean; codex: boolean; openrouter?: boolean };
   defaultAgent: { provider: "claude" | "codex"; model: string };
   vcsProviders: VcsProviderKind[];
   vcsBotIdentities: VcsProviderKind[];

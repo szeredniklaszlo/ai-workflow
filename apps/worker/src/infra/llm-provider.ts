@@ -1,8 +1,9 @@
-export type LlmProvider = "claude" | "codex";
+export type LlmProvider = "claude" | "codex" | "openrouter";
 
 /** Best-effort provider guess from a model id when none was passed explicitly. */
 function inferProvider(model: string): LlmProvider | undefined {
   const id = model.toLowerCase();
+  if (id.startsWith("openrouter") || id.includes("/")) return "openrouter";
   if (id.startsWith("claude") || id.startsWith("anthropic")) return "claude";
   if (id.startsWith("gpt") || /^o[0-9]/.test(id) || id.includes("codex")) return "codex";
   return undefined;

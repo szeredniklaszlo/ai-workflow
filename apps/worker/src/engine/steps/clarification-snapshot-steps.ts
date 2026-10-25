@@ -378,6 +378,7 @@ export async function snapshotClarificationSandboxStep(
       env.ANTHROPIC_API_KEY,
       env.CODEX_API_KEY,
       env.CODEX_CHATGPT_OAUTH_TOKEN,
+      env.OPENROUTER_API_KEY,
       ...tracingSecrets,
     ].filter(
       (value): value is string =>
@@ -579,6 +580,8 @@ export async function restoreClarificationSandboxStep(
           anthropicApiKey: env.ANTHROPIC_API_KEY,
           codexApiKey: env.CODEX_API_KEY,
           codexChatGptOauthToken: env.CODEX_CHATGPT_OAUTH_TOKEN,
+          openrouterApiKey: env.OPENROUTER_API_KEY,
+          openrouterBaseUrl: env.OPENROUTER_BASE_URL,
           tracing: await agentTracingPlans({ harness: selected.kind, run: input.tracingRun }),
         });
       }

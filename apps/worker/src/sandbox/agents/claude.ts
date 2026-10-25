@@ -70,22 +70,46 @@ export class ClaudeAgentAdapter implements AgentAdapter {
   }
 
   async configure(sandbox: RunnableSandbox, opts: ConfigureOpts): Promise<void> {
-    if (!opts.anthropicApiKey) {
+    const useOpenRouter = Boolean(
+      opts.openrouterApiKey &&
+      (!opts.anthropicApiKey || opts.model.includes("/") || opts.model.startsWith("openrouter")),
+    );
+
+    if (!opts.anthropicApiKey && !useOpenRouter) {
       throw runtimePreparationError(
         this.cliSpec,
         "Claude authentication credentials were not configured.",
       );
     }
-    // Claude Code CLI accepts standard API keys (`sk-ant-api...`) via
-    // ANTHROPIC_API_KEY and OAuth tokens (`sk-ant-oat...`, issued by
-    // `claude setup-token`) via CLAUDE_CODE_OAUTH_TOKEN. Operators paste
-    // either flavor into ANTHROPIC_API_KEY; route to the right sandbox var
-    // by prefix so OAuth tokens don't get rejected as invalid API keys.
-    const isOauthToken = opts.anthropicApiKey.startsWith("sk-ant-oat");
+
+    let authLines: string[];
+    if (useOpenRouter && opts.openrouterApiKey) {
+      // Claude Code CLI appends /v1/messages to ANTHROPIC_BASE_URL.
+      // OpenRouter serves its Anthropic skin at https://openrouter.ai/api.
+      const baseUrl = opts.openrouterBaseUrl
+        ? opts.openrouterBaseUrl.replace(/\/v1\/?$/, "") + "/api"
+        : "https://openrouter.ai/api";
+      authLines = [
+        `export ANTHROPIC_BASE_URL=${shellQuote(baseUrl)}`,
+        `export ANTHROPIC_AUTH_TOKEN=${shellQuote(opts.openrouterApiKey)}`,
+        `export ANTHROPIC_API_KEY=""`,
+      ];
+    } else {
+      // Claude Code CLI accepts standard API keys (`sk-ant-api...`) via
+      // ANTHROPIC_API_KEY and OAuth tokens (`sk-ant-oat...`, issued by
+      // `claude setup-token`) via CLAUDE_CODE_OAUTH_TOKEN. Operators paste
+      // either flavor into ANTHROPIC_API_KEY; route to the right sandbox var
+      // by prefix so OAuth tokens don't get rejected as invalid API keys.
+      const isOauthToken = opts.anthropicApiKey!.startsWith("sk-ant-oat");
+      authLines = [
+        isOauthToken
+          ? `export CLAUDE_CODE_OAUTH_TOKEN=${shellQuote(opts.anthropicApiKey!)}`
+          : `export ANTHROPIC_API_KEY=${shellQuote(opts.anthropicApiKey!)}`,
+      ];
+    }
+
     const envLines: string[] = [
-      isOauthToken
-        ? `export CLAUDE_CODE_OAUTH_TOKEN=${shellQuote(opts.anthropicApiKey)}`
-        : `export ANTHROPIC_API_KEY=${shellQuote(opts.anthropicApiKey)}`,
+      ...authLines,
       // What a tracing provider asked the agent itself to have. A provider's
       // hook variables, its key among them, are in its own file instead,
       // which only its hook commands source.

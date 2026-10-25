@@ -433,7 +433,7 @@ export function modelsRequiringPriceLookup(
 export function repoMemoryDistillTarget(
   runDefaultKind: AgentKind,
   defaults: { claude: string; codex: string },
-): { provider: "claude" | "codex" | undefined; model: string } {
+): { provider: "claude" | "codex" | "openrouter" | undefined; model: string } {
   return resolveCallLlmTarget(
     runDefaultKind === "codex"
       ? { provider: "codex", model: REPO_MEMORY_DISTILL_MODEL_CODEX }

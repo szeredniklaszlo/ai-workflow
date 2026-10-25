@@ -21,6 +21,8 @@ const LLM_TIMEOUT_MS = 4 * 60 * 1000;
 interface LlmProviderCredentials {
   anthropicApiKey?: string;
   codexApiKey?: string;
+  openrouterApiKey?: string;
+  openrouterBaseUrl?: string;
 }
 
 export interface GenerateProviderTextInput {
@@ -47,12 +49,17 @@ function resolveModel(
   model: string,
   credentials: LlmProviderCredentials,
 ): LanguageModel {
+  if (provider === "openrouter") {
+    return createOpenAI({
+      apiKey: credentials.openrouterApiKey,
+      baseURL: credentials.openrouterBaseUrl ?? "https://openrouter.ai/api/v1",
+    })(model);
+  }
   if (provider === "codex") {
     return createOpenAI({ apiKey: credentials.codexApiKey })(model);
   }
   return createAnthropic({ apiKey: credentials.anthropicApiKey })(model);
 }
-
 /** Execute one AI SDK provider call using already-normalized transport inputs. */
 export async function generateProviderText(
   input: GenerateProviderTextInput,

@@ -654,7 +654,7 @@ export interface DistillRepoMemoryInput {
    * of the material: it shares the material byte cap and never steers the step. */
   reviewNotes?: string;
   model: string;
-  provider?: "claude" | "codex";
+  provider?: "claude" | "codex" | "openrouter";
   timeoutMs: number;
 }
 
