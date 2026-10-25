@@ -24,7 +24,6 @@ coverage
 
 # Git & IDE
 .git
-.github
 .idea
 .vscode
 
