@@ -186,23 +186,39 @@ export function RepositoriesPanel({
   const { issueTrackerId } = useCockpit();
   const subjectKey = resolvePanelSubjectKey(ticketKey, trackerId ?? issueTrackerId, explicitSubjectKey);
   const [toggled, setToggled] = React.useState<boolean | null>(null);
+  const [loadedSubjectKey, setLoadedSubjectKey] = React.useState<string | null>(null);
   const [record, setRecord] = React.useState<WorkScopeRead | null>(null);
   const [failure, setFailure] = React.useState<LoadFailure | null>(null);
   const [loading, setLoading] = React.useState(subjectKey !== null);
   const [readAt, setReadAt] = React.useState<Date | null>(null);
   const subjectRef = React.useRef(subjectKey);
+  const loadedSubjectRef = React.useRef<string | null>(null);
   // The ticket page mounts this panel twice, once per breakpoint, and hides
   // one: only the twin a person can see is worth a request.
   const frameRef = React.useRef<HTMLElement>(null);
   const onScreen = useOnScreen(frameRef);
 
+  const hasCurrentSubjectState = subjectKey !== null && loadedSubjectKey === subjectKey;
+  const activeRecord = hasCurrentSubjectState ? record : null;
+  const activeFailure = hasCurrentSubjectState ? failure : null;
+  const activeReadAt = hasCurrentSubjectState ? readAt : null;
+  const activeLoading = subjectKey !== null && (loading || !hasCurrentSubjectState);
+
   const load = React.useCallback(async () => {
     subjectRef.current = subjectKey;
     if (subjectKey === null) {
+      loadedSubjectRef.current = null;
+      setLoadedSubjectKey(null);
       setRecord(null);
       setFailure(null);
+      setReadAt(null);
       setLoading(false);
       return;
+    }
+    if (loadedSubjectRef.current !== subjectKey) {
+      setRecord(null);
+      setFailure(null);
+      setReadAt(null);
     }
     setLoading(true);
     const loaded = await loadVisibility(
@@ -210,6 +226,8 @@ export function RepositoriesPanel({
       readWorkScopeWithRounds,
     );
     if (subjectRef.current !== subjectKey) return;
+    loadedSubjectRef.current = subjectKey;
+    setLoadedSubjectKey(subjectKey);
     setLoading(false);
     setReadAt(new Date());
     if (loaded.ok) {
@@ -226,7 +244,7 @@ export function RepositoriesPanel({
     if (onScreen) void load();
   }, [load, onScreen]);
 
-  const rounds = record?.rounds.ok ? record.rounds.value : null;
+  const rounds = activeRecord?.rounds.ok ? activeRecord.rounds.value : null;
   const pending = rounds?.items.filter((round) => round.status === "pending").length ?? 0;
 
   // A person answers in Jira and comes back to this tab. Slow cadence: the
@@ -243,11 +261,11 @@ export function RepositoriesPanel({
   const summary =
     subjectKey === null
       ? "unavailable"
-      : record
-    ? `${plural(record.entries.length, "repository", "repositories")} decided${
+      : activeRecord
+    ? `${plural(activeRecord.entries.length, "repository", "repositories")} decided${
         rounds ? `, ${plural(rounds.total, "question")}` : ""
       }`
-    : loading
+    : activeLoading
       ? "loading"
       : "could not be loaded";
 
@@ -269,8 +287,8 @@ export function RepositoriesPanel({
           <span className="flex flex-wrap items-center gap-2">
             {pending > 0 ? <CkChip tone="awaiting">{plural(pending, "question")} waiting</CkChip> : null}
             <span className="font-body text-[12px] text-neutral-600">{summary}</span>
-            {readAt ? (
-              <span className="font-mono text-[10px] text-neutral-600">read at {formatClock(readAt)}</span>
+            {activeReadAt ? (
+              <span className="font-mono text-[10px] text-neutral-600">read at {formatClock(activeReadAt)}</span>
             ) : null}
           </span>
         </span>
@@ -283,21 +301,21 @@ export function RepositoriesPanel({
                 The issue tracker for this ticket could not be determined, so its repository record cannot be read.
               </Notice>
             ) : null}
-            {subjectKey !== null && failure ? (
-              <LoadFailureNotice failure={failure} what="The repository record" onRetry={() => void load()} />
+            {subjectKey !== null && activeFailure ? (
+              <LoadFailureNotice failure={activeFailure} what="The repository record" onRetry={() => void load()} />
             ) : null}
-            {subjectKey !== null && loading && record === null ? (
+            {subjectKey !== null && activeLoading && activeRecord === null ? (
               <Loading label="Loading the repository record…" />
             ) : null}
-            {subjectKey !== null && record ? (
+            {subjectKey !== null && activeRecord ? (
               <>
                 <div className="flex flex-col gap-1.5">
                   <div className="flex flex-wrap items-baseline justify-between gap-2">
                     <h4 className="m-0 font-display text-[14px] font-semibold text-coal">What is decided</h4>
-                    <span className="font-mono text-[10px] text-neutral-600">record version {record.version}</span>
+                    <span className="font-mono text-[10px] text-neutral-600">record version {activeRecord.version}</span>
                   </div>
                   <Entries
-                    record={record}
+                    record={activeRecord}
                     questionWaiting={pending > 0}
                     onRecord={(scope) =>
                       setRecord((current) =>
@@ -313,16 +331,16 @@ export function RepositoriesPanel({
                     }
                     onReload={() => void load()}
                   />
-                  {record.unreadableEntries > 0 ? (
+                  {activeRecord.unreadableEntries > 0 ? (
                     <Notice>
-                      {plural(record.unreadableEntries, "entry", "entries")} of the record could not be read and is not
+                      {plural(activeRecord.unreadableEntries, "entry", "entries")} of the record could not be read and is not
                       listed.
                     </Notice>
                   ) : null}
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <h4 className="m-0 font-display text-[14px] font-semibold text-coal">Repository questions</h4>
-                  <Rounds subjectKey={subjectKey} record={record} />
+                  <Rounds subjectKey={subjectKey} record={activeRecord} />
                 </div>
               </>
             ) : null}
