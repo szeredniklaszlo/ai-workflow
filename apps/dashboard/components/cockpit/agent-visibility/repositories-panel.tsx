@@ -39,6 +39,9 @@ import { RoundView } from "./round-view";
  * worker writes the record under whichever tracker this deployment connected,
  * so a hardcoded segment reads an address nothing was ever written to and the
  * panel shows an empty record instead of the work somebody is looking at.
+ * Taken from the build's own integrations when only one serves `issue_tracker`;
+ * when multiple trackers ship in the build, an explicit tracker id or full
+ * subject key is required so the panel never guesses the first provider.
  */
 const TICKET_PROVIDERS = integrationsProviding("issue_tracker").map(
   (integration) => integration.id,
@@ -48,11 +51,29 @@ export function panelTicketSubjectKey(ticketKey: string, trackerId?: string): st
   if (ticketKey.startsWith("ticket:")) {
     return ticketKey;
   }
-  const provider = trackerId ?? TICKET_PROVIDERS[0];
+  const provider = trackerId ?? (TICKET_PROVIDERS.length === 1 ? TICKET_PROVIDERS[0] : undefined);
   if (provider === undefined) {
     throw new Error(
-      "This build ships no issue tracker integration, so the ticket's subject key cannot be derived.",
+      "This build ships more than one issue tracker, so the ticket's subject key cannot be derived from the build alone: pass the run's tracker id into this panel.",
     );
+  }
+  return ticketSubjectKey(provider, ticketKey);
+}
+
+function resolvePanelSubjectKey(
+  ticketKey: string,
+  trackerId?: string,
+  explicitSubjectKey?: string,
+): string | null {
+  if (explicitSubjectKey && explicitSubjectKey.trim() !== "") {
+    return explicitSubjectKey;
+  }
+  if (ticketKey.startsWith("ticket:")) {
+    return ticketKey;
+  }
+  const provider = trackerId ?? (TICKET_PROVIDERS.length === 1 ? TICKET_PROVIDERS[0] : undefined);
+  if (provider === undefined) {
+    return null;
   }
   return ticketSubjectKey(provider, ticketKey);
 }
@@ -163,11 +184,11 @@ export function RepositoriesPanel({
   autoOpen?: boolean;
 }) {
   const { issueTrackerId } = useCockpit();
-  const subjectKey = explicitSubjectKey ?? panelTicketSubjectKey(ticketKey, trackerId ?? issueTrackerId);
+  const subjectKey = resolvePanelSubjectKey(ticketKey, trackerId ?? issueTrackerId, explicitSubjectKey);
   const [toggled, setToggled] = React.useState<boolean | null>(null);
   const [record, setRecord] = React.useState<WorkScopeRead | null>(null);
   const [failure, setFailure] = React.useState<LoadFailure | null>(null);
-  const [loading, setLoading] = React.useState(true);
+  const [loading, setLoading] = React.useState(subjectKey !== null);
   const [readAt, setReadAt] = React.useState<Date | null>(null);
   const subjectRef = React.useRef(subjectKey);
   // The ticket page mounts this panel twice, once per breakpoint, and hides
@@ -177,6 +198,12 @@ export function RepositoriesPanel({
 
   const load = React.useCallback(async () => {
     subjectRef.current = subjectKey;
+    if (subjectKey === null) {
+      setRecord(null);
+      setFailure(null);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     const loaded = await loadVisibility(
       () => apiClient.workScope.get(subjectKey, null, { cache: "no-store" }),
@@ -205,7 +232,7 @@ export function RepositoriesPanel({
   // A person answers in Jira and comes back to this tab. Slow cadence: the
   // answer travels through a webhook and a run, not through this page.
   useLivePoll({
-    enabled: onScreen === true && pending > 0,
+    enabled: onScreen === true && pending > 0 && subjectKey !== null,
     intervalMs: IDLE_POLL_MS,
     onTick: () => void load(),
   });
@@ -213,7 +240,10 @@ export function RepositoriesPanel({
   // Open without being asked only where the ticket itself is what a person
   // came for, and only when a question is waiting.
   const open = toggled ?? (autoOpen && pending > 0);
-  const summary = record
+  const summary =
+    subjectKey === null
+      ? "unavailable"
+      : record
     ? `${plural(record.entries.length, "repository", "repositories")} decided${
         rounds ? `, ${plural(rounds.total, "question")}` : ""
       }`
@@ -248,9 +278,18 @@ export function RepositoriesPanel({
       {open ? (
         <PagedCacheProvider>
           <div className="flex flex-col gap-4 border-t border-neutral-200 px-4 py-3">
-            {failure ? <LoadFailureNotice failure={failure} what="The repository record" onRetry={() => void load()} /> : null}
-            {loading && record === null ? <Loading label="Loading the repository record…" /> : null}
-            {record ? (
+            {subjectKey === null ? (
+              <Notice title="The repository record is unavailable">
+                The issue tracker for this ticket could not be determined, so its repository record cannot be read.
+              </Notice>
+            ) : null}
+            {subjectKey !== null && failure ? (
+              <LoadFailureNotice failure={failure} what="The repository record" onRetry={() => void load()} />
+            ) : null}
+            {subjectKey !== null && loading && record === null ? (
+              <Loading label="Loading the repository record…" />
+            ) : null}
+            {subjectKey !== null && record ? (
               <>
                 <div className="flex flex-col gap-1.5">
                   <div className="flex flex-wrap items-baseline justify-between gap-2">
