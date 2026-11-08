@@ -33,10 +33,7 @@ import {
   type WorkflowParamValue,
   type WorkflowValueSchema,
 } from "@shared/contracts";
-import {
-  isWorkflowSchemaAssignable,
-  RUN_BINDING_SCHEMA,
-} from "./bindings";
+import { isWorkflowSchemaAssignable, RUN_BINDING_SCHEMA } from "./bindings";
 import type { WorkflowJsonSchemaSupport } from "./json-schema-support";
 import { deriveTransformOutputSchema } from "./transform";
 import { parseWorkflowDataReferenceV2 } from "./v2-bindings";
@@ -63,6 +60,7 @@ export interface WorkflowV2BindingAnalysis {
 export interface WorkflowValueAnalysis extends WorkflowV2BindingAnalysis {
   /** The exact definition instance this pass walked. */
   definition: WorkflowDefinitionV2;
+
   /** The editor's data catalog, built on first read: a validation request
    *  never asks for it. */
   catalog(): WorkflowDefinitionCatalogResponse;
@@ -82,6 +80,8 @@ interface WorkflowValueWalk {
   definition: WorkflowDefinitionV2;
   /** Every node of the definition, by id. */
   nodeById: ReadonlyMap<string, WorkflowDefinitionV2Node>;
+  /** Outgoing node ids from each node along control edges. */
+  forward: ReadonlyMap<string, readonly string[]>;
   /** Control edges arriving at a node; more than one means a join. */
   incoming: ReadonlyMap<string, readonly WorkflowDefinitionV2ControlEdge[]>;
   /** Which nodes each node reaches along control edges. */
@@ -119,7 +119,9 @@ function pointerSegment(value: string): string {
   return value.replaceAll("~", "~0").replaceAll("/", "~1");
 }
 
-function configurationParams(node: WorkflowDefinitionV2Node): Record<string, WorkflowParamValue> {
+function configurationParams(
+  node: WorkflowDefinitionV2Node,
+): Record<string, WorkflowParamValue> {
   const params: Record<string, WorkflowParamValue> = {};
   for (const [name, value] of Object.entries(node.configuration)) {
     if (
@@ -158,9 +160,7 @@ function contractForNode(
       ) {
         continue;
       }
-      const inspected = jsonSchema.inspect(
-        carry.schema as JsonSchema202012,
-      );
+      const inspected = jsonSchema.inspect(carry.schema as JsonSchema202012);
       if (inspected.ok) properties[carry.name] = inspected.valueSchema;
     }
     if (contract.output.bindingSchema.type !== "object") return contract;
@@ -177,10 +177,7 @@ function contractForNode(
         values,
       },
       required: [
-        ...new Set([
-          ...contract.output.bindingSchema.required,
-          "values",
-        ]),
+        ...new Set([...contract.output.bindingSchema.required, "values"]),
       ],
     } satisfies WorkflowValueSchema;
     return {
@@ -332,11 +329,11 @@ function contractsForDefinition(
   return contracts;
 }
 
-function jsonSchemaMetadata(
-  schema: WorkflowValueSchema,
-): JsonSchema202012 {
+function jsonSchemaMetadata(schema: WorkflowValueSchema): JsonSchema202012 {
   return {
-    ...(schema.description === undefined ? {} : { description: schema.description }),
+    ...(schema.description === undefined
+      ? {}
+      : { description: schema.description }),
     ...(schema.enum === undefined ? {} : { enum: schema.enum }),
   };
 }
@@ -447,11 +444,14 @@ function catalogSchemaPaths(
       parentOptional || !unwrapped.schema.required.includes(name);
     const childUnwrapped = nullableSchema(child);
     const path = [...prefix, name];
-    result.push({
-      path,
-      schema: child,
-      presence: catalogPresence(optional, childUnwrapped.nullable),
-    }, ...catalogSchemaPaths(child, path, optional));
+    result.push(
+      {
+        path,
+        schema: child,
+        presence: catalogPresence(optional, childUnwrapped.nullable),
+      },
+      ...catalogSchemaPaths(child, path, optional),
+    );
   }
   return result;
 }
@@ -478,7 +478,8 @@ function requiredSchemaAtPath(
 ): WorkflowValueSchema | null {
   let current = schema;
   for (const name of path) {
-    if (current.type !== "object" || !current.required.includes(name)) return null;
+    if (current.type !== "object" || !current.required.includes(name))
+      return null;
     const child = current.properties[name];
     if (!child) return null;
     current = child;
@@ -489,20 +490,21 @@ function requiredSchemaAtPath(
 function commonMetadata(schemas: readonly WorkflowValueSchema[]) {
   const first = schemas[0];
   if (!first) return {};
-  const description = schemas.every((schema) => schema.description === first.description)
+  const description = schemas.every(
+    (schema) => schema.description === first.description,
+  )
     ? first.description
     : undefined;
   const enums = schemas.map((schema) => schema.enum);
-  const enumValues =
-    enums.every((values) => values !== undefined)
-      ? [
-          ...new Map(
-            enums
-              .flatMap((values) => values ?? [])
-              .map((value) => [JSON.stringify(value), value]),
-          ).values(),
-        ]
-      : undefined;
+  const enumValues = enums.every((values) => values !== undefined)
+    ? [
+        ...new Map(
+          enums
+            .flatMap((values) => values ?? [])
+            .map((value) => [JSON.stringify(value), value]),
+        ).values(),
+      ]
+    : undefined;
   return {
     ...(description === undefined ? {} : { description }),
     ...(enumValues === undefined ? {} : { enum: enumValues }),
@@ -538,7 +540,9 @@ function commonSourceSchema(
       break;
     case "array": {
       const items = commonSourceSchema(
-        values.map((schema) => (schema.type === "array" ? schema.items : firstValue.items)),
+        values.map((schema) =>
+          schema.type === "array" ? schema.items : firstValue.items,
+        ),
       );
       if (!items) return null;
       merged = { type: "array", items, ...metadata };
@@ -554,7 +558,9 @@ function commonSourceSchema(
       );
       const properties: Record<string, WorkflowValueSchema> = {};
       for (const name of names) {
-        const child = commonSourceSchema(objects.map((schema) => schema.properties[name]!));
+        const child = commonSourceSchema(
+          objects.map((schema) => schema.properties[name]!),
+        );
         if (child) properties[name] = child;
       }
       const required = firstValue.required.filter(
@@ -566,7 +572,9 @@ function commonSourceSchema(
         type: "object",
         properties,
         required,
-        additionalProperties: objects.some((schema) => schema.additionalProperties),
+        additionalProperties: objects.some(
+          (schema) => schema.additionalProperties,
+        ),
         ...metadata,
       };
       break;
@@ -580,7 +588,9 @@ function commonSourceSchema(
 }
 
 function termKey(term: ActivationTerm): string {
-  return JSON.stringify([...term].sort(([left], [right]) => left.localeCompare(right)));
+  return JSON.stringify(
+    [...term].sort(([left], [right]) => left.localeCompare(right)),
+  );
 }
 
 function oneTerm(variable: string, value: string): ActivationFormula {
@@ -623,7 +633,10 @@ function mergeFormula(
   }
 }
 
-function sameFormula(left: ActivationFormula, right: ActivationFormula): boolean {
+function sameFormula(
+  left: ActivationFormula,
+  right: ActivationFormula,
+): boolean {
   return (
     left.precise === right.precise &&
     left.terms.size === right.terms.size &&
@@ -641,7 +654,9 @@ function resolvedPort(
 function stronglyConnectedComponents(
   definition: WorkflowDefinitionV2,
 ): string[][] {
-  const adjacency = new Map(definition.nodes.map((node) => [node.id, [] as string[]]));
+  const adjacency = new Map(
+    definition.nodes.map((node) => [node.id, [] as string[]]),
+  );
   for (const edge of definition.edges) {
     if (!adjacency.has(edge.to)) continue;
     adjacency.get(edge.from)?.push(edge.to);
@@ -685,7 +700,9 @@ function stronglyConnectedComponents(
   return components;
 }
 
-function stronglyConnectedNodeIds(definition: WorkflowDefinitionV2): Set<string> {
+function stronglyConnectedNodeIds(
+  definition: WorkflowDefinitionV2,
+): Set<string> {
   const selfLoops = new Set(
     definition.edges
       .filter((edge) => edge.from === edge.to)
@@ -693,9 +710,7 @@ function stronglyConnectedNodeIds(definition: WorkflowDefinitionV2): Set<string>
   );
   return new Set(
     stronglyConnectedComponents(definition).flatMap((component) =>
-      component.length > 1 || selfLoops.has(component[0]!)
-        ? component
-        : [],
+      component.length > 1 || selfLoops.has(component[0]!) ? component : [],
     ),
   );
 }
@@ -767,10 +782,7 @@ function authoringLoopRegions(
       }
       phaseAdjacency.get(edge.from)?.push(edge.to);
       const source = nodeById.get(edge.from);
-      if (
-        source &&
-        blockTypeSpecOf(source.type).ports.length === 1
-      ) {
+      if (source && blockTypeSpecOf(source.type).ports.length === 1) {
         phaseGuaranteedAdjacency.get(edge.from)?.push(edge.to);
       }
     }
@@ -830,11 +842,9 @@ function phaseGuaranteesSource(
   ) {
     return true;
   }
-  return !reachableFromStarts(
-    starts,
-    region.phaseAdjacency,
-    sourceId,
-  ).has(consumerId);
+  return !reachableFromStarts(starts, region.phaseAdjacency, sourceId).has(
+    consumerId,
+  );
 }
 
 function loopScopedGuarantee(
@@ -900,10 +910,12 @@ function activationFormulas(
   nodeById: ReadonlyMap<string, WorkflowDefinitionV2Node>,
   cyclicNodeIds: ReadonlySet<string>,
 ): Map<string, ActivationFormula> {
-  const incoming = new Map(definition.nodes.map((node) => [
-    node.id,
-    [] as WorkflowDefinitionV2ControlEdge[],
-  ]));
+  const incoming = new Map(
+    definition.nodes.map((node) => [
+      node.id,
+      [] as WorkflowDefinitionV2ControlEdge[],
+    ]),
+  );
   for (const edge of definition.edges) incoming.get(edge.to)?.push(edge);
 
   let formulas = new Map(
@@ -939,7 +951,8 @@ function activationFormulas(
       }
       if (cyclicNodeIds.has(node.id)) formula.precise = false;
       next.set(node.id, formula);
-      if (!sameFormula(formula, formulas.get(node.id) ?? emptyFormula())) changed = true;
+      if (!sameFormula(formula, formulas.get(node.id) ?? emptyFormula()))
+        changed = true;
     }
     formulas = next;
     if (!changed) {
@@ -953,7 +966,10 @@ function activationFormulas(
   return formulas;
 }
 
-function termContains(container: ActivationTerm, required: ActivationTerm): boolean {
+function termContains(
+  container: ActivationTerm,
+  required: ActivationTerm,
+): boolean {
   for (const [variable, value] of required) {
     if (container.get(variable) !== value) return false;
   }
@@ -1088,7 +1104,8 @@ function causalEdgeIds(
   return definition.edges
     .filter(
       (edge) =>
-        (edge.from === sourceId || reachability.get(sourceId)?.has(edge.from)) &&
+        (edge.from === sourceId ||
+          reachability.get(sourceId)?.has(edge.from)) &&
         (edge.to === consumerId || reachability.get(edge.to)?.has(consumerId)),
     )
     .map((edge) => edge.id);
@@ -1118,8 +1135,7 @@ function targetListCompatibility(
     .filter((target) => {
       const itemSchema = arrayItemSchema(target.schema);
       return (
-        itemSchema !== null &&
-        isWorkflowSchemaAssignable(source, itemSchema)
+        itemSchema !== null && isWorkflowSchemaAssignable(source, itemSchema)
       );
     })
     .map((target) => target.name);
@@ -1132,15 +1148,17 @@ function inputTargets(
   issues: WorkflowDefinitionValidationIssue[],
   jsonSchema: WorkflowJsonSchemaSupport,
 ): InputTarget[] {
-  const targets: InputTarget[] = Object.entries(contract.inputs).map(([name, input]) => ({
-    name,
-    schema: input.schema,
-    // A default from the run's ticket satisfies the input without a binding;
-    // the executor side fills it (and refuses when the ticket holds nothing).
-    required: input.required && (input.defaultFromSubject?.length ?? 0) === 0,
-    binding: node.inputs[name],
-    path: `/nodes/${nodeIndex}/inputs/${pointerSegment(name)}`,
-  }));
+  const targets: InputTarget[] = Object.entries(contract.inputs).map(
+    ([name, input]) => ({
+      name,
+      schema: input.schema,
+      // A default from the run's ticket satisfies the input without a binding;
+      // the executor side fills it (and refuses when the ticket holds nothing).
+      required: input.required && (input.defaultFromSubject?.length ?? 0) === 0,
+      binding: node.inputs[name],
+      path: `/nodes/${nodeIndex}/inputs/${pointerSegment(name)}`,
+    }),
+  );
 
   const fixedNames = new Set(Object.keys(contract.inputs));
   const seenAdditional = new Set<string>();
@@ -1169,7 +1187,10 @@ function inputTargets(
           severity: "error",
           nodeId: node.id,
           path: `${basePath}/schema${issue.path}`,
-          message: issue.message.replace(/^outputSchema/, `Input "${input.name}" schema`),
+          message: issue.message.replace(
+            /^outputSchema/,
+            `Input "${input.name}" schema`,
+          ),
         });
       }
       continue;
@@ -1214,9 +1235,7 @@ function inputTargets(
         continue;
       }
       seenCarry.add(rawCarry.name);
-      const parsed = jsonSchema.inspect(
-        rawCarry.schema as JsonSchema202012,
-      );
+      const parsed = jsonSchema.inspect(rawCarry.schema as JsonSchema202012);
       if (!parsed.ok) {
         for (const issue of parsed.issues) {
           issues.push({
@@ -1250,13 +1269,12 @@ function validateLiteral(
   jsonSchema: WorkflowJsonSchemaSupport,
 ): Array<{ path: string; message: string }> {
   if (target.schema.type === "unknown") return [];
-  return jsonSchema.validateValue(
-    workflowValueSchemaToJsonSchema(target.schema),
-    value,
-  ).map((issue) => ({
-    path: `${target.path}/value${issue.path}`,
-    message: issue.message,
-  }));
+  return jsonSchema
+    .validateValue(workflowValueSchemaToJsonSchema(target.schema), value)
+    .map((issue) => ({
+      path: `${target.path}/value${issue.path}`,
+      message: issue.message,
+    }));
 }
 
 function validateBindings(
@@ -1352,7 +1370,10 @@ function validateBindings(
           });
           continue;
         }
-        for (const [referenceIndex, reference] of target.binding.references.entries()) {
+        for (const [
+          referenceIndex,
+          reference,
+        ] of target.binding.references.entries()) {
           const available = availableByReference.get(reference);
           const parsedSource = available
             ? jsonSchema.inspect(available.schema)
@@ -1367,10 +1388,7 @@ function validateBindings(
             });
           } else if (
             !parsedSource?.ok ||
-            !isWorkflowSchemaAssignable(
-              parsedSource.valueSchema,
-              itemSchema,
-            )
+            !isWorkflowSchemaAssignable(parsedSource.valueSchema, itemSchema)
           ) {
             issues.push({
               code: "binding.reference_type",
@@ -1418,9 +1436,14 @@ export function analyzeWorkflowValues(
 ): WorkflowValueAnalysis {
   const issues: WorkflowDefinitionValidationIssue[] = [];
   const nodeById = new Map(definition.nodes.map((node) => [node.id, node]));
-  const forward = new Map(definition.nodes.map((node) => [node.id, [] as string[]]));
+  const forward = new Map(
+    definition.nodes.map((node) => [node.id, [] as string[]]),
+  );
   const incoming = new Map(
-    definition.nodes.map((node) => [node.id, [] as WorkflowDefinitionV2ControlEdge[]]),
+    definition.nodes.map((node) => [
+      node.id,
+      [] as WorkflowDefinitionV2ControlEdge[],
+    ]),
   );
   for (const edge of definition.edges) {
     if (!nodeById.has(edge.from) || !nodeById.has(edge.to)) continue;
@@ -1433,13 +1456,25 @@ export function analyzeWorkflowValues(
   const cyclicNodeIds = stronglyConnectedNodeIds(definition);
   const loopRegionsByNodeId = authoringLoopRegions(definition, nodeById);
   const formulas = activationFormulas(definition, nodeById, cyclicNodeIds);
-  const triggers = definition.nodes.filter((node) => isTriggerBlockType(node.type));
-  const contracts = contractsForDefinition(definition, resolveContract, jsonSchema);
+  const triggers = definition.nodes.filter((node) =>
+    isTriggerBlockType(node.type),
+  );
+  const contracts = contractsForDefinition(
+    definition,
+    resolveContract,
+    jsonSchema,
+  );
   const targetsByNode = new Map<string, InputTarget[]>();
   for (const [nodeIndex, node] of definition.nodes.entries()) {
     targetsByNode.set(
       node.id,
-      inputTargets(node, nodeIndex, contracts.get(node.id)!, issues, jsonSchema),
+      inputTargets(
+        node,
+        nodeIndex,
+        contracts.get(node.id)!,
+        issues,
+        jsonSchema,
+      ),
     );
   }
 
@@ -1467,7 +1502,9 @@ export function analyzeWorkflowValues(
     if (activeTriggerIds.length > 0) {
       const triggerSchemas = activeTriggerIds
         .map((id) => contracts.get(id)?.output.bindingSchema)
-        .filter((schema): schema is WorkflowValueSchema => schema !== undefined);
+        .filter(
+          (schema): schema is WorkflowValueSchema => schema !== undefined,
+        );
       const first = triggerSchemas[0];
       if (first && triggerSchemas.length === activeTriggerIds.length) {
         const commonOutput = commonSourceSchema(triggerSchemas);
@@ -1478,7 +1515,8 @@ export function analyzeWorkflowValues(
               activeTriggerIds.length === 1
                 ? `${nodeById.get(activeTriggerIds[0]!)?.name ?? contracts.get(activeTriggerIds[0]!)?.presentation.label ?? "Trigger"} · output`
                 : "Trigger that started this run · output",
-            description: "Complete output from the trigger that started this run.",
+            description:
+              "Complete output from the trigger that started this run.",
             schema: workflowValueSchemaToJsonSchema(commonOutput),
             source: { kind: "entry", nodeId: null, blockType: null },
             guarantee: {
@@ -1500,7 +1538,8 @@ export function analyzeWorkflowValues(
           values.push({
             reference: `steps.entry.output.${path}`,
             label: `Active trigger · ${path}`,
-            description: common.description ?? "Value supplied by every active trigger.",
+            description:
+              common.description ?? "Value supplied by every active trigger.",
             schema: workflowValueSchemaToJsonSchema(common),
             source: { kind: "entry", nodeId: null, blockType: null },
             guarantee: {
@@ -1524,6 +1563,13 @@ export function analyzeWorkflowValues(
       const directSolePredecessor =
         (incoming.get(consumer.id)?.length ?? 0) > 0 &&
         incoming.get(consumer.id)?.every((edge) => edge.from === source.id);
+      const dominatesConsumer =
+        !cyclicNodeIds.has(source.id) &&
+        activeTriggerIds.length > 0 &&
+        blockTypeSpecOf(source.type).ports.length <= 1 &&
+        !reachableFromStarts(activeTriggerIds, forward, source.id).has(
+          consumer.id,
+        );
       if (
         source.id === consumer.id ||
         isTriggerBlockType(source.type) ||
@@ -1531,13 +1577,12 @@ export function analyzeWorkflowValues(
         !(
           scopedGuarantee ??
           (directSolePredecessor ||
-          (
-            !cyclicNodeIds.has(source.id) &&
-            formulaImplies(
-              consumerFormula,
-              formulas.get(source.id) ?? emptyFormula(),
-            )
-          ))
+            dominatesConsumer ||
+            (!cyclicNodeIds.has(source.id) &&
+              formulaImplies(
+                consumerFormula,
+                formulas.get(source.id) ?? emptyFormula(),
+              )))
         )
       ) {
         continue;
@@ -1580,12 +1625,15 @@ export function analyzeWorkflowValues(
           targets,
         ),
       });
-      for (const candidate of requiredSchemaPaths(contract.output.bindingSchema)) {
+      for (const candidate of requiredSchemaPaths(
+        contract.output.bindingSchema,
+      )) {
         const path = candidate.path.join(".");
         values.push({
           reference: `steps.${source.id}.output.${path}`,
           label: `${source.name ?? contract.presentation.label} · ${path}`,
-          description: candidate.schema.description ?? contract.presentation.description,
+          description:
+            candidate.schema.description ?? contract.presentation.description,
           schema: workflowValueSchemaToJsonSchema(candidate.schema),
           source: {
             kind: "step",
@@ -1609,7 +1657,8 @@ export function analyzeWorkflowValues(
       values.push({
         reference: `run.${path}`,
         label: `Run · ${path}`,
-        description: candidate.schema.description ?? "Value fixed for this workflow run.",
+        description:
+          candidate.schema.description ?? "Value fixed for this workflow run.",
         schema: workflowValueSchemaToJsonSchema(candidate.schema),
         source: { kind: "run", nodeId: null, blockType: null },
         guarantee: {
@@ -1634,6 +1683,7 @@ export function analyzeWorkflowValues(
   const walk: WorkflowValueWalk = {
     definition,
     nodeById,
+    forward,
     incoming,
     reachability,
     cyclicNodeIds,
@@ -1649,7 +1699,8 @@ export function analyzeWorkflowValues(
     availableValuesByNode,
     nodeContracts,
     issues,
-    catalog: () => (catalog ??= { nodeContracts, catalogByNode: catalogByNode(walk) }),
+    catalog: () =>
+      (catalog ??= { nodeContracts, catalogByNode: catalogByNode(walk) }),
   };
 }
 
@@ -1657,18 +1708,17 @@ function v2RunBindingSchema(
   definition: WorkflowDefinitionV2,
   activeTriggerIds?: readonly string[],
 ): WorkflowValueSchema {
-  const triggers = definition.nodes.filter((node) =>
-    isTriggerBlockType(node.type) &&
-    (activeTriggerIds === undefined || activeTriggerIds.includes(node.id)),
+  const triggers = definition.nodes.filter(
+    (node) =>
+      isTriggerBlockType(node.type) &&
+      (activeTriggerIds === undefined || activeTriggerIds.includes(node.id)),
   );
   return {
     type: "object",
     properties: {
-      ...(
-        RUN_BINDING_SCHEMA.type === "object"
-          ? RUN_BINDING_SCHEMA.properties
-          : {}
-      ),
+      ...(RUN_BINDING_SCHEMA.type === "object"
+        ? RUN_BINDING_SCHEMA.properties
+        : {}),
       trigger: {
         type: "object",
         properties: {
@@ -1688,11 +1738,9 @@ function v2RunBindingSchema(
       },
     },
     required: [
-      ...(
-        RUN_BINDING_SCHEMA.type === "object"
-          ? RUN_BINDING_SCHEMA.required
-          : []
-      ),
+      ...(RUN_BINDING_SCHEMA.type === "object"
+        ? RUN_BINDING_SCHEMA.required
+        : []),
       "trigger",
     ],
     additionalProperties: false,
@@ -1732,6 +1780,7 @@ function catalogByNode(
   const {
     definition,
     nodeById,
+    forward,
     incoming,
     reachability,
     cyclicNodeIds,
@@ -1756,9 +1805,9 @@ function catalogByNode(
         : null;
     const triggerLabel =
       activeTriggerIds.length === 1
-        ? nodeById.get(activeTriggerIds[0]!)?.name ??
+        ? (nodeById.get(activeTriggerIds[0]!)?.name ??
           contracts.get(activeTriggerIds[0]!)?.presentation.label ??
-          "Trigger"
+          "Trigger")
         : "Trigger that started this run";
 
     if (commonTriggerOutput) {
@@ -1766,7 +1815,8 @@ function catalogByNode(
         catalogEntry({
           reference: "steps.entry.output",
           label: `${triggerLabel} · Entire output`,
-          description: "Complete output from the trigger that started this run.",
+          description:
+            "Complete output from the trigger that started this run.",
           valueSchema: commonTriggerOutput,
           source: {
             kind: "trigger",
@@ -1845,8 +1895,7 @@ function catalogByNode(
       if (!schema) continue;
       for (const candidate of catalogSchemaPaths(schema)) {
         const path = candidate.path.join(".");
-        const reference =
-          `steps.entry.output.${path}` as const;
+        const reference = `steps.entry.output.${path}` as const;
         if (commonTriggerReferences.has(reference)) continue;
         const existing = triggerSpecific.get(reference);
         if (existing) {
@@ -1867,17 +1916,14 @@ function catalogByNode(
       if (!schema) continue;
       const names = candidate.triggerIds.map(
         (id) =>
-          nodeById.get(id)?.name ??
-          contracts.get(id)?.presentation.label ??
-          id,
+          nodeById.get(id)?.name ?? contracts.get(id)?.presentation.label ?? id,
       );
       entries.push(
         catalogEntry({
           reference: reference as WorkflowDataCatalogEntry["reference"],
           label: `${triggerLabel} · ${candidate.path}`,
           description:
-            schema.description ??
-            `Only supplied by ${names.join(", ")}.`,
+            schema.description ?? `Only supplied by ${names.join(", ")}.`,
           valueSchema: schema,
           source: {
             kind: "trigger",
@@ -1908,19 +1954,25 @@ function catalogByNode(
         continue;
       }
       const contract = contracts.get(source.id)!;
-      const guaranteed =
-        loopScopedGuarantee(
-          source.id,
+      const directSolePredecessor =
+        (incoming.get(consumer.id)?.length ?? 0) > 0 &&
+        incoming.get(consumer.id)?.every((edge) => edge.from === source.id);
+      const dominatesConsumer =
+        !cyclicNodeIds.has(source.id) &&
+        activeTriggerIds.length > 0 &&
+        blockTypeSpecOf(source.type).ports.length <= 1 &&
+        !reachableFromStarts(activeTriggerIds, forward, source.id).has(
           consumer.id,
-          loopRegionsByNodeId,
-        ) ??
-        (
-          !cyclicNodeIds.has(source.id) &&
-          formulaImplies(
-            consumerFormula,
-            formulas.get(source.id) ?? emptyFormula(),
-          )
         );
+      const guaranteed =
+        loopScopedGuarantee(source.id, consumer.id, loopRegionsByNodeId) ??
+        (directSolePredecessor ||
+          dominatesConsumer ||
+          (!cyclicNodeIds.has(source.id) &&
+            formulaImplies(
+              consumerFormula,
+              formulas.get(source.id) ?? emptyFormula(),
+            )));
       const availability = guaranteed
         ? ({
             state: "available",
@@ -1971,8 +2023,7 @@ function catalogByNode(
               path === "output" ? "Output" : path
             }`,
             description:
-              candidate.schema.description ??
-              contract.presentation.description,
+              candidate.schema.description ?? contract.presentation.description,
             valueSchema: candidate.schema,
             source: sourceDetails,
             presence: candidate.presence,
@@ -2008,10 +2059,7 @@ function catalogByNode(
             state: "available",
             guarantee: "Run information is always available.",
           },
-          compatibleInputNames: targetCompatibility(
-            candidate.schema,
-            targets,
-          ),
+          compatibleInputNames: targetCompatibility(candidate.schema, targets),
           compatibleListInputNames: targetListCompatibility(
             candidate.schema,
             targets,
