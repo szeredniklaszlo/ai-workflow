@@ -151,6 +151,9 @@ async function validateCapabilities(
       organizationId,
       provider: draft.harness.provider,
       cliVersion: draft.harness.cliVersion,
+      ...(draft.credentialReferences.includes("openrouter")
+        ? { credential: "openrouter" as const }
+        : {}),
     });
   } catch (error) {
     if (error instanceof HarnessCapabilityCatalogError) {

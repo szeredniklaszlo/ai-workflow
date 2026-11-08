@@ -15,6 +15,7 @@ export function readCachedHarnessCapabilities(input: {
   organizationId: string;
   provider: HarnessProvider;
   cliVersion: string;
+  credential?: "openrouter";
 }) {
   return getConnectedCachedHarnessCapabilities(input);
 }

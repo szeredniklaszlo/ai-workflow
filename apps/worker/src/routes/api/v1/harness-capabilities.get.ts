@@ -25,10 +25,12 @@ export default defineEventHandler(
       const query = getQuery(event);
       const provider = parseProvider(query.provider);
       const cliVersion = parseCliVersion(query.cliVersion);
+      const credential = query.credential === "openrouter" ? "openrouter" : undefined;
       return await readCachedHarnessCapabilities({
         organizationId: actor.organizationId,
         provider,
         cliVersion,
+        ...(credential ? { credential } : {}),
       });
     } catch (error) {
       if (error instanceof HarnessCapabilityCatalogError) {

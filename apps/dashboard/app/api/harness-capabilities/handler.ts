@@ -16,17 +16,23 @@ export async function handleHarnessCapabilitiesGet(
   const source = new URL(request.url);
   const provider = source.searchParams.get("provider");
   const cliVersion = source.searchParams.get("cliVersion");
+  const credential = source.searchParams.get("credential");
   if (
     (provider !== "claude" && provider !== "codex") ||
     !cliVersion ||
-    !/^\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?$/.test(cliVersion)
+    !/^\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?$/.test(cliVersion) ||
+    (credential !== null && credential !== "openrouter")
   ) {
     return NextResponse.json(
       { error: "Invalid capability request" },
       { status: 400, headers: { "cache-control": "no-store" } },
     );
   }
-  const query = new URLSearchParams({ provider, cliVersion });
+  const query = new URLSearchParams({
+    provider,
+    cliVersion,
+    ...(credential ? { credential } : {}),
+  });
   try {
     const response = await workerProxy(
       `/api/v1/harness-capabilities?${query.toString()}`,

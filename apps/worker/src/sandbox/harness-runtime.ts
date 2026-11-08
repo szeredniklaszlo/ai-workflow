@@ -66,6 +66,7 @@ const HARNESS_MCP_INTEGRATION_CATALOG = new Set<string>(
 const HARNESS_CREDENTIAL_REFERENCE_CATALOG = new Set([
   "anthropic",
   "openai",
+  "openrouter",
   // Every provider with credentials of its own is an integration now, so the
   // registry is the whole list. The two model vendors above are not: they are
   // harness credentials rather than a connection an admin makes.
@@ -117,6 +118,8 @@ export interface RuntimeCredentialSource {
   anthropicApiKey?: string;
   codexApiKey?: string;
   codexChatGptOauthToken?: string;
+  openrouterApiKey?: string;
+  openrouterBaseUrl?: string;
 }
 
 export interface ResolvedRuntimeCredentials {
@@ -277,6 +280,19 @@ export function resolveRuntimeCredentials(
         `Credential reference "${reference}" is not in the code-owned catalog.`,
       );
     }
+  }
+  if (references.length === 1 && references[0] === "openrouter") {
+    if (!source.openrouterApiKey) {
+      throw new Error(
+        "The pinned OpenRouter Harness Profile requires an unavailable symbolic credential.",
+      );
+    }
+    return {
+      openrouterApiKey: source.openrouterApiKey,
+      ...(source.openrouterBaseUrl
+        ? { openrouterBaseUrl: source.openrouterBaseUrl }
+        : {}),
+    };
   }
   const requiredReference =
     manifest.harness.provider === "claude" ? "anthropic" : "openai";

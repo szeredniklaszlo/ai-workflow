@@ -14,6 +14,7 @@ import type {
   HarnessProvider,
 } from "@shared/contracts";
 import { buildHarnessProfileDraftV2 } from "@shared/contracts";
+import { OPENROUTER_RECOGNISED_MODELS } from "@shared/harness";
 import type { Db } from "../db/types.js";
 import {
   createConnectedHarnessCapabilityCatalogRepository,
@@ -233,6 +234,7 @@ export async function getCachedHarnessCapabilities(
     organizationId: string;
     provider: HarnessProvider;
     cliVersion: string;
+    credential?: "openrouter";
     now?: () => Date;
   },
 ): Promise<HarnessCapabilitiesResponse> {
@@ -247,6 +249,7 @@ export function getConnectedCachedHarnessCapabilities(
     organizationId: string;
     provider: HarnessProvider;
     cliVersion: string;
+    credential?: "openrouter";
     now?: () => Date;
   },
 ): Promise<HarnessCapabilitiesResponse> {
@@ -262,10 +265,14 @@ async function getCachedHarnessCapabilitiesFromRepository(
     organizationId: string;
     provider: HarnessProvider;
     cliVersion: string;
+    credential?: "openrouter";
     now?: () => Date;
   },
 ): Promise<HarnessCapabilitiesResponse> {
   assertSupportedCliVersion(input.provider, input.cliVersion);
+  if (input.credential === "openrouter") {
+    return getOpenRouterHarnessCapabilities(input);
+  }
   const now = input.now?.() ?? new Date();
   const cached = await readCachedCatalog(repository, input);
   if (!cached) {
@@ -286,6 +293,7 @@ export async function requireFreshHarnessCapabilities(
     organizationId: string;
     provider: HarnessProvider;
     cliVersion: string;
+    credential?: "openrouter";
     now?: () => Date;
   },
 ): Promise<HarnessCapabilitiesResponse> {
@@ -301,6 +309,7 @@ export function requireFreshHarnessCapabilitiesFromRepository(
     organizationId: string;
     provider: HarnessProvider;
     cliVersion: string;
+    credential?: "openrouter";
     now?: () => Date;
   },
 ): Promise<HarnessCapabilitiesResponse> {
@@ -313,6 +322,7 @@ async function requireFreshHarnessCapabilitiesInternal(
     organizationId: string;
     provider: HarnessProvider;
     cliVersion: string;
+    credential?: "openrouter";
     now?: () => Date;
   },
 ): Promise<HarnessCapabilitiesResponse> {
@@ -320,6 +330,7 @@ async function requireFreshHarnessCapabilitiesInternal(
     organizationId: input.organizationId,
     provider: input.provider,
     cliVersion: input.cliVersion,
+    credential: input.credential,
     now: input.now,
   });
   if (response.stale) {
@@ -1198,4 +1209,136 @@ function safeDiscoveryFailure(error: unknown): string {
     return "Capability discovery timed out.";
   }
   return "Capability discovery failed.";
+}
+
+const openRouterCatalogCache = new Map<
+  string,
+  { response: HarnessCapabilitiesResponse; expiresAt: number }
+>();
+
+async function getOpenRouterHarnessCapabilities(input: {
+  provider: HarnessProvider;
+  cliVersion: string;
+  now?: () => Date;
+}): Promise<HarnessCapabilitiesResponse> {
+  assertSupportedCliVersion(input.provider, input.cliVersion);
+  const { env } = await import("../infra/vcs-config.js");
+  if (!env.OPENROUTER_API_KEY) {
+    throw new HarnessCapabilityCatalogError(
+      503,
+      "OpenRouter model discovery is not ready. Configure OPENROUTER_API_KEY on the worker.",
+    );
+  }
+  const now = input.now?.() ?? new Date();
+  const cacheKey = `${input.provider}:${input.cliVersion}`;
+  const cached = openRouterCatalogCache.get(cacheKey);
+  if (cached && cached.expiresAt > now.getTime()) {
+    return structuredClone(cached.response);
+  }
+
+  const models = await discoverOpenRouterCapabilities(
+    input.provider,
+    env.OPENROUTER_API_KEY,
+    env.OPENROUTER_BASE_URL,
+  );
+  const providerContract = HARNESS_PROVIDER_CONTRACTS[input.provider];
+  const catalog: HarnessCapabilityCatalog = normalizeCatalog({
+    provider: input.provider,
+    packageName: providerContract.packageName,
+    cliVersion: input.cliVersion,
+    protocolVersion: providerContract.protocolVersions[0],
+    models,
+  });
+  const catalogHash = hashHarnessCapabilityCatalog(catalog);
+  const response: HarnessCapabilitiesResponse = {
+    ...catalog,
+    catalogHash,
+    fetchedAt: now.toISOString(),
+    stale: false,
+    refreshFailure: null,
+  };
+  openRouterCatalogCache.set(cacheKey, {
+    response,
+    expiresAt: now.getTime() + HARNESS_CAPABILITY_PREWARM_PERIOD_MS,
+  });
+  return structuredClone(response);
+}
+
+async function discoverOpenRouterCapabilities(
+  provider: HarnessProvider,
+  apiKey: string,
+  baseUrl: string | undefined,
+): Promise<HarnessModelCapability[]> {
+  const endpoint = `${(baseUrl ?? "https://openrouter.ai/api/v1").replace(/\/+$/, "")}/models`;
+  const rawList: Array<{
+    id: string;
+    name?: string;
+    description?: string;
+    context_length?: number;
+  }> = [];
+
+  try {
+    const response = await fetch(endpoint, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (response.ok) {
+      const body = (await response.json()) as { data?: unknown[] };
+      for (const item of body.data ?? []) {
+        const record = objectRecord(item);
+        const id = stringValue(record.id);
+        if (!id) continue;
+        rawList.push({
+          id,
+          name: stringValue(record.name) ?? undefined,
+          description: stringValue(record.description) ?? undefined,
+          context_length: positiveInteger(record.context_length) ?? undefined,
+        });
+      }
+    }
+  } catch {
+    // Fallback to recognised models below when offline or timed out.
+  }
+
+  const byId = new Map(rawList.map((entry) => [entry.id, entry]));
+  const orderedIds = [
+    ...OPENROUTER_RECOGNISED_MODELS,
+    ...rawList.map((entry) => entry.id),
+  ];
+  const seen = new Set<string>();
+  const capabilities: HarnessModelCapability[] = [];
+
+  for (const id of orderedIds) {
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const meta = byId.get(id);
+    const contextWindow = meta?.context_length ?? 128_000;
+    const rawName = meta?.name ? `${meta.name} (${id})` : id;
+    capabilities.push({
+      id,
+      name: rawName.slice(0, 200),
+      description: meta?.description ? meta.description.slice(0, 4_000) : null,
+      contextWindowTokens: contextWindow,
+      reasoningEfforts: [
+        optionFromId("none"),
+        optionFromId("low"),
+        optionFromId("medium"),
+        optionFromId("high"),
+      ],
+      defaultReasoningEffort: "medium",
+      serviceTiers: [optionFromId("standard")],
+      defaultServiceTier: "standard",
+      verbosityOptions:
+        provider === "codex"
+          ? [optionFromId("low"), optionFromId("medium"), optionFromId("high")]
+          : [],
+      defaultVerbosity: provider === "codex" ? "medium" : null,
+      compactionModes:
+        provider === "claude"
+          ? ["model_default", "disabled"]
+          : ["model_default", "custom_threshold"],
+    });
+  }
+
+  return capabilities;
 }

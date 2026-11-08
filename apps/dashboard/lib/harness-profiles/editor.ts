@@ -8,7 +8,24 @@ import type {
   HarnessProvider,
 } from "@shared/contracts";
 import { buildHarnessProfileDraftV2 } from "@shared/contracts";
-import { BUILTIN_HARNESS_PROFILE_MANIFESTS } from "@shared/harness";
+import {
+  BUILTIN_HARNESS_PROFILE_MANIFESTS,
+  DEFAULT_OPENROUTER_MODEL,
+} from "@shared/harness";
+
+export type ProfileProviderOption = HarnessProvider | "openrouter";
+
+export function isOpenRouterProfile(
+  draft: Pick<HarnessProfileDraftManifest, "credentialReferences">,
+): boolean {
+  return draft.credentialReferences.includes("openrouter");
+}
+
+export function profileProviderOption(
+  draft: Pick<HarnessProfileDraftManifest, "harness" | "credentialReferences">,
+): ProfileProviderOption {
+  return isOpenRouterProfile(draft) ? "openrouter" : draft.harness.provider;
+}
 
 export function draftFromManifest(
   manifest: HarnessProfileManifest,
@@ -24,17 +41,32 @@ export function draftFromManifest(
 }
 
 export function newProfileDraft(
-  provider: HarnessProvider,
+  provider: ProfileProviderOption,
+  harnessOverride: HarnessProvider = "codex",
 ): HarnessProfileDraftManifestV1 {
+  const effectiveHarness: HarnessProvider =
+    provider === "openrouter" ? harnessOverride : provider;
   const manifest = Object.values(BUILTIN_HARNESS_PROFILE_MANIFESTS).find(
-    (candidate) => candidate.harness.provider === provider,
+    (candidate) => candidate.harness.provider === effectiveHarness,
   );
   if (!manifest) {
-    throw new Error(`Missing built-in ${provider} compatibility profile`);
+    throw new Error(`Missing built-in ${effectiveHarness} compatibility profile`);
   }
   const draft = draftFromManifest(manifest);
   if (draft.schemaVersion !== 1) {
     throw new Error("Built-in compatibility profiles must use schema v1");
+  }
+  if (provider === "openrouter") {
+    return {
+      ...draft,
+      displayName: "Custom OpenRouter",
+      description: "",
+      model: {
+        id: DEFAULT_OPENROUTER_MODEL,
+        options: {},
+      },
+      credentialReferences: ["openrouter"],
+    };
   }
   return {
     ...draft,
@@ -45,10 +77,15 @@ export function newProfileDraft(
 
 export function withHarnessProvider(
   draft: HarnessProfileDraftManifest,
-  provider: HarnessProvider,
+  provider: ProfileProviderOption,
   capabilities?: HarnessCapabilitiesResponse,
+  harnessOverride?: HarnessProvider,
 ): HarnessProfileDraftManifest | null {
-  const baseline = newProfileDraft(provider);
+  const effectiveHarness: HarnessProvider =
+    provider === "openrouter"
+      ? (harnessOverride ?? draft.harness.provider)
+      : provider;
+  const baseline = newProfileDraft(provider, effectiveHarness);
   const targetDraft: HarnessProfileDraftManifestV1 = {
     ...draft,
     schemaVersion: 1,
@@ -57,7 +94,7 @@ export function withHarnessProvider(
     compaction: baseline.compaction,
     homeFiles: draft.homeFiles.map((file) => ({
       ...file,
-      path: provider === "codex" ? "AGENTS.md" : "CLAUDE.md",
+      path: effectiveHarness === "codex" ? "AGENTS.md" : "CLAUDE.md",
       mode: 0o644,
     })),
     credentialReferences: baseline.credentialReferences,
@@ -66,7 +103,7 @@ export function withHarnessProvider(
   if (
     !capabilities ||
     capabilities.stale ||
-    capabilities.provider !== provider ||
+    capabilities.provider !== effectiveHarness ||
     capabilities.cliVersion !== baseline.harness.cliVersion
   ) {
     return null;

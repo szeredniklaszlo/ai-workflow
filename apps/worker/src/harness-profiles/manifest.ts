@@ -166,7 +166,8 @@ const draftManifestSchema = z
       manifest.harness.provider === "claude" ? "anthropic" : "openai";
     if (
       manifest.credentialReferences.length !== 1 ||
-      manifest.credentialReferences[0] !== requiredCredential
+      (manifest.credentialReferences[0] !== requiredCredential &&
+        manifest.credentialReferences[0] !== "openrouter")
     ) {
       context.addIssue({
         code: "custom",

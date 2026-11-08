@@ -6,13 +6,16 @@ import { Button, Checkbox, CkCard, CkChip, Input, Select, Textarea } from "@/com
 import { SkillImport } from "./skill-import";
 import {
   canEditProfile,
+  isOpenRouterProfile,
   isProfileSlug,
   newProfileDraft,
   upgradeProfileDraft,
   modelSelectionLabel,
+  profileProviderOption,
   selectableHarnessModels,
   withHarnessModel,
   withHarnessProvider,
+  type ProfileProviderOption
 } from "@/lib/harness-profiles/editor";
 import { apiClient } from "@/lib/api/client";
 import type {
@@ -309,6 +312,9 @@ export function ProfileEditor({
     // right after Refresh, which is the remedy those notices prescribe.
   }, [profile.id, profile.draftRevision, profile.draft]);
 
+  const isOpenRouter = isOpenRouterProfile(draft);
+  const selectedProvider = profileProviderOption(draft);
+
   useEffect(() => {
     const controller = new AbortController();
     setCapabilityLoading(true);
@@ -317,6 +323,7 @@ export function ProfileEditor({
       draft.harness.provider,
       draft.harness.cliVersion,
       { cache: "no-store", signal: controller.signal },
+      isOpenRouter ? "openrouter" : undefined,
     )
       .then(async (response) => {
         if (!response.ok) throw new Error(response.errorMessage);
@@ -342,7 +349,7 @@ export function ProfileEditor({
         if (!controller.signal.aborted) setCapabilityLoading(false);
       });
     return () => controller.abort();
-  }, [draft.harness.cliVersion, draft.harness.provider]);
+  }, [draft.harness.cliVersion, draft.harness.provider, isOpenRouter]);
 
   useEffect(() => {
     if (
@@ -486,10 +493,27 @@ export function ProfileEditor({
     );
   }
 
-  async function switchProvider(provider: HarnessProvider) {
-    if (provider === draft.harness.provider) return;
+  async function switchProvider(
+    provider: ProfileProviderOption,
+    harnessOverride?: HarnessProvider,
+  ) {
+    const targetHarness: HarnessProvider =
+      provider === "openrouter"
+        ? (harnessOverride ?? draft.harness.provider)
+        : provider;
+    if (
+      provider === selectedProvider &&
+      targetHarness === draft.harness.provider
+    ) {
+      return;
+    }
     if (draft.schemaVersion === 1) {
-      const next = withHarnessProvider(draft, provider);
+      const next = withHarnessProvider(
+        draft,
+        provider,
+        undefined,
+        targetHarness,
+      );
       if (!next) return;
       setDraft(next);
       setHomeFilesSource(JSON.stringify(next.homeFiles, null, 2));
@@ -497,14 +521,15 @@ export function ProfileEditor({
       return;
     }
 
-    const baseline = newProfileDraft(provider);
+    const baseline = newProfileDraft(provider, targetHarness);
     setCapabilityLoading(true);
     setCapabilityError(null);
     try {
       const response = await apiClient.harnessCapabilities.get(
-        provider,
+        targetHarness,
         baseline.harness.cliVersion,
         { cache: "no-store" },
+        provider === "openrouter" ? "openrouter" : undefined,
       );
       if (!response.ok) throw new Error(response.errorMessage);
       const targetCapabilities = response.data;
@@ -512,6 +537,7 @@ export function ProfileEditor({
         draft,
         provider,
         targetCapabilities,
+        targetHarness,
       );
       if (!next) {
         throw new Error(
@@ -1166,17 +1192,44 @@ export function ProfileEditor({
                 options={[
                   { value: "codex", label: "Codex" },
                   { value: "claude", label: "Claude" },
+                  { value: "openrouter", label: "OpenRouter" },
                 ]}
-                value={draft.harness.provider}
+                value={selectedProvider}
                 disabled={!editable || capabilityLoading}
                 aria-label="Harness provider"
                 onChange={(providerValue) => {
-                  const provider =
-                    providerValue === "claude" ? "claude" : "codex";
-                  void switchProvider(provider);
+                  const nextProvider: ProfileProviderOption =
+                    providerValue === "claude"
+                      ? "claude"
+                      : providerValue === "openrouter"
+                        ? "openrouter"
+                        : "codex";
+                  void switchProvider(nextProvider);
                 }}
               />
             </Field>
+            {isOpenRouter && (
+              <Field
+                label="Harness"
+                hint="Select which CLI agent harness executes the OpenRouter model."
+              >
+                <Select
+                  size="compact"
+                  options={[
+                    { value: "codex", label: "Codex (@openai/codex)" },
+                    { value: "claude", label: "Claude (@anthropic-ai/claude-code)" },
+                  ]}
+                  value={draft.harness.provider}
+                  disabled={!editable || capabilityLoading}
+                  aria-label="OpenRouter CLI harness"
+                  onChange={(harnessValue) => {
+                    const nextHarness: HarnessProvider =
+                      harnessValue === "claude" ? "claude" : "codex";
+                    void switchProvider("openrouter", nextHarness);
+                  }}
+                />
+              </Field>
+            )}
             <div className="sm:col-span-2">
               <Field label="Description">
                 <Textarea
@@ -1761,7 +1814,11 @@ export function ProfileEditor({
                 monospace
                 aria-label="Credential references"
                 value={
-                  draft.harness.provider === "claude" ? "anthropic" : "openai"
+                  isOpenRouter
+                    ? "openrouter"
+                    : draft.harness.provider === "claude"
+                      ? "anthropic"
+                      : "openai"
                 }
                 disabled
               />

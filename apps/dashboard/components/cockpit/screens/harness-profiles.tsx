@@ -54,14 +54,15 @@ function NewProfilePanel({
   const sources = profiles.filter((profile) => profile.archivedAt === null);
   const [slug, setSlug] = useState("");
   const [displayName, setDisplayName] = useState("");
-  const [provider, setProvider] = useState<"codex" | "claude">("codex");
+  const [provider, setProvider] = useState<"codex" | "claude" | "openrouter">("codex");
+  const [harness, setHarness] = useState<"codex" | "claude">("codex");
   const [sourceId, setSourceId] = useState("");
 
   function buildDraft(): HarnessProfileDraftManifest {
     const source = sources.find((profile) => profile.id === sourceId);
     const base = source
       ? structuredClone(source.draft)
-      : newProfileDraft(provider);
+      : newProfileDraft(provider, harness);
     return {
       ...base,
       displayName: displayName.trim(),
@@ -130,24 +131,53 @@ function NewProfilePanel({
           />
         </div>
         {!sourceId && (
-          <div className="flex flex-col gap-1">
-            <span className="font-mono text-[9px] uppercase tracking-[0.06em] text-neutral-700">
-              Provider
-            </span>
-            <Select
-              size="compact"
-              options={[
-                { value: "codex", label: "Codex" },
-                { value: "claude", label: "Claude" },
-              ]}
-              value={provider}
-              disabled={busy}
-              aria-label="New profile provider"
-              onChange={(value) =>
-                setProvider(value === "claude" ? "claude" : "codex")
-              }
-            />
-          </div>
+          <>
+            <div className="flex flex-col gap-1">
+              <span className="font-mono text-[9px] uppercase tracking-[0.06em] text-neutral-700">
+                Provider
+              </span>
+              <Select
+                size="compact"
+                options={[
+                  { value: "codex", label: "Codex" },
+                  { value: "claude", label: "Claude" },
+                  { value: "openrouter", label: "OpenRouter" },
+                ]}
+                value={provider}
+                disabled={busy}
+                aria-label="New profile provider"
+                onChange={(value) =>
+                  setProvider(
+                    value === "claude"
+                      ? "claude"
+                      : value === "openrouter"
+                        ? "openrouter"
+                        : "codex",
+                  )
+                }
+              />
+            </div>
+            {provider === "openrouter" && (
+              <div className="flex flex-col gap-1">
+                <span className="font-mono text-[9px] uppercase tracking-[0.06em] text-neutral-700">
+                  Harness
+                </span>
+                <Select
+                  size="compact"
+                  options={[
+                    { value: "codex", label: "Codex (@openai/codex)" },
+                    { value: "claude", label: "Claude (@anthropic-ai/claude-code)" },
+                  ]}
+                  value={harness}
+                  disabled={busy}
+                  aria-label="New profile harness"
+                  onChange={(value) =>
+                    setHarness(value === "claude" ? "claude" : "codex")
+                  }
+                />
+              </div>
+            )}
+          </>
         )}
       </div>
       <div className="mt-3 flex gap-2">

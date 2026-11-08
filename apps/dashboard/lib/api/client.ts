@@ -362,8 +362,13 @@ export const apiClient = {
       provider: string,
       cliVersion: string,
       options?: BrowserRequestOptions,
+      credential?: "openrouter",
     ) => {
-      const query = new URLSearchParams({ provider, cliVersion });
+      const query = new URLSearchParams({
+        provider,
+        cliVersion,
+        ...(credential ? { credential } : {}),
+      });
       return requestJson<HarnessCapabilitiesResponse>(
         `/api/harness-capabilities?${query.toString()}`,
         options,

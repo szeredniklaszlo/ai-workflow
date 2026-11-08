@@ -235,12 +235,12 @@ export async function prepareHarnessAgentInvocationStep(
       anthropicApiKey: env.ANTHROPIC_API_KEY,
       codexApiKey: env.CODEX_API_KEY,
       codexChatGptOauthToken: env.CODEX_CHATGPT_OAUTH_TOKEN,
+      openrouterApiKey: env.OPENROUTER_API_KEY,
+      openrouterBaseUrl: env.OPENROUTER_BASE_URL,
     });
     const { agentTracingPlans } = await import("../support/integration-tracing.js");
     await adapter.configure(sandbox, {
       ...credentials,
-      openrouterApiKey: env.OPENROUTER_API_KEY,
-      openrouterBaseUrl: env.OPENROUTER_BASE_URL,
       model,
       tracing: await agentTracingPlans({ harness: agentKind, run: tracingRun }),
       runtime: runtime.paths,
